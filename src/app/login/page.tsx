@@ -43,8 +43,8 @@ export default function LoginPage() {
         // Verificar se os cookies foram definidos
         setTimeout(() => {
           console.log('Cookies after setting:', document.cookie);
-          console.log('Redirecting to /enterprise');
-          window.location.href = '/enterprise';
+          console.log('Redirecting to /test for debugging');
+          window.location.href = '/test';
         }, 100);
       } else if (email.includes('funcionario') || email.includes('employee')) {
         // Funcionário
@@ -56,8 +56,8 @@ export default function LoginPage() {
         // Verificar se os cookies foram definidos
         setTimeout(() => {
           console.log('Cookies after setting:', document.cookie);
-          console.log('Redirecting to /enterprise/user');
-          window.location.href = '/enterprise/user';
+          console.log('Redirecting to /test for debugging');
+          window.location.href = '/test';
         }, 100);
       } else {
         // Usuário individual
@@ -69,8 +69,8 @@ export default function LoginPage() {
         // Verificar se os cookies foram definidos
         setTimeout(() => {
           console.log('Cookies after setting:', document.cookie);
-          console.log('Redirecting to /dashboard');
-          window.location.href = '/dashboard';
+          console.log('Redirecting to /test for debugging');
+          window.location.href = '/test';
         }, 100);
       }
     } catch (err) {
