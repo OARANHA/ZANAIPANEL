@@ -1,0 +1,870 @@
+import * as vscode from 'vscode';
+import { io, Socket } from 'socket.io-client';
+import axios from 'axios';
+import { AgentProvider } from './agentProvider';
+import { ZanaiCodeIntegration } from './zanaiCodeIntegration';
+import { ZanaiCodeProvider } from './zanaiCodeProvider';
+
+interface VSCodeContext {
+  files: Array<{
+    path: string;
+    content: string;
+    language: string;
+  }>;
+  activeFile: string | null;
+  workspacePath: string;
+  timestamp: string;
+}
+
+interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  status: string;
+}
+
+export class ZanaiExtension {
+  private context: vscode.ExtensionContext;
+  private socket: Socket | null = null;
+  private statusBar: vscode.StatusBarItem;
+  private agents: Agent[] = [];
+  private workspaceId: string = '';
+  private serverUrl: string = '';
+  private agentProvider: AgentProvider;
+  private zanaiCodeIntegration: ZanaiCodeIntegration;
+  private zanaiCodeProvider: ZanaiCodeProvider;
+
+  constructor(context: vscode.ExtensionContext) {
+    this.context = context;
+    this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    this.statusBar.text = '$(plug) Zanai';
+    this.statusBar.tooltip = 'Zanai AI Assistant';
+    this.statusBar.command = 'zanai.connect';
+    this.statusBar.show();
+    
+    this.agentProvider = new AgentProvider();
+    this.zanaiCodeIntegration = new ZanaiCodeIntegration(context);
+    this.zanaiCodeProvider = new ZanaiCodeProvider(this.zanaiCodeIntegration);
+  }
+
+  async activate() {
+    this.registerCommands();
+    this.loadConfiguration();
+    this.setupEventListeners();
+    this.setupTreeView();
+    
+    // Auto-ingest markdown files if ZanaiCode is enabled
+    if (this.zanaiCodeIntegration.getConfig().enabled && this.zanaiCodeIntegration.getConfig().autoIngest) {
+      // Delay ingestion to allow VS Code to fully start
+      setTimeout(() => {
+        this.ingestMarkdownFiles();
+      }, 2000);
+    }
+  }
+
+  private registerCommands() {
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('zanai.connect', () => this.connect()),
+      vscode.commands.registerCommand('zanai.disconnect', () => this.disconnect()),
+      vscode.commands.registerCommand('zanai.syncContext', () => this.syncContext()),
+      vscode.commands.registerCommand('zanai.executeAgent', (agentId?: string) => {
+        if (agentId) {
+          this.agentProvider.executeAgent(agentId);
+        } else {
+          this.executeAgent();
+        }
+      }),
+      vscode.commands.registerCommand('zanai.showAgents', () => this.showAgents()),
+      vscode.commands.registerCommand('zanai.openWebInterface', () => this.openWebInterface()),
+      vscode.commands.registerCommand('zanai.refreshAgents', () => this.agentProvider.refresh()),
+      vscode.commands.registerCommand('zanai.viewAgentDetails', (agentId: string) => {
+        this.agentProvider.viewAgentDetails(agentId);
+      }),
+      // ZanaiCode commands
+      vscode.commands.registerCommand('zanaiCode.ingestMarkdown', () => this.ingestMarkdownFiles()),
+      vscode.commands.registerCommand('zanaiCode.showIngestedFiles', () => this.showIngestedFiles()),
+      vscode.commands.registerCommand('zanaiCode.clearMemory', () => this.clearZanaiCodeMemory()),
+      vscode.commands.registerCommand('zanaiCode.searchInMemory', () => this.searchInZanaiCodeMemory()),
+      vscode.commands.registerCommand('zanaiCode.toggleMemoryMode', () => this.toggleMemoryMode()),
+      vscode.commands.registerCommand('zanaiCode.showConfig', () => this.showZanaiCodeConfig()),
+      vscode.commands.registerCommand('zanaiCode.viewFileContent', (file) => this.zanaiCodeProvider.viewFileContent(file)),
+      vscode.commands.registerCommand('zanaiCode.refreshFiles', () => this.zanaiCodeProvider.refresh())
+    );
+  }
+
+  private loadConfiguration() {
+    const config = vscode.workspace.getConfiguration('zanai');
+    this.serverUrl = config.get('serverUrl', 'http://localhost:3000');
+    this.workspaceId = config.get('workspaceId', '');
+    
+    if (!this.workspaceId) {
+      this.promptForWorkspaceId();
+    }
+  }
+
+  private async promptForWorkspaceId() {
+    const workspaceId = await vscode.window.showInputBox({
+      prompt: 'Enter your Zanai Workspace ID',
+      placeHolder: 'Workspace ID from Zanai web interface'
+    });
+    
+    if (workspaceId) {
+      this.workspaceId = workspaceId;
+      await vscode.workspace.getConfiguration('zanai').update('workspaceId', workspaceId, true);
+    }
+  }
+
+  private setupEventListeners() {
+    // Auto-sync context when files change
+    vscode.workspace.onDidChangeTextDocument(async (event) => {
+      if (vscode.workspace.getConfiguration('zanai').get('autoSync', true) && this.socket?.connected) {
+        await this.syncContext();
+      }
+      
+      // Auto-ingest markdown files if they change
+      if (this.zanaiCodeIntegration.getConfig().enabled && this.zanaiCodeIntegration.getConfig().autoIngest) {
+        if (event.document.fileName.endsWith('.md')) {
+          setTimeout(() => {
+            this.ingestMarkdownFiles();
+          }, 1000);
+        }
+      }
+    });
+
+    // Sync when active editor changes
+    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+      if (vscode.workspace.getConfiguration('zanai').get('autoSync', true) && this.socket?.connected) {
+        await this.syncContext();
+      }
+    });
+
+    // Watch for file system changes in markdown files
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*.md');
+    watcher.onDidCreate(() => {
+      if (this.zanaiCodeIntegration.getConfig().enabled && this.zanaiCodeIntegration.getConfig().autoIngest) {
+        setTimeout(() => {
+          this.ingestMarkdownFiles();
+        }, 1000);
+      }
+    });
+    watcher.onDidChange(() => {
+      if (this.zanaiCodeIntegration.getConfig().enabled && this.zanaiCodeIntegration.getConfig().autoIngest) {
+        setTimeout(() => {
+          this.ingestMarkdownFiles();
+        }, 1000);
+      }
+    });
+    watcher.onDidDelete(() => {
+      if (this.zanaiCodeIntegration.getConfig().enabled && this.zanaiCodeIntegration.getConfig().autoIngest) {
+        setTimeout(() => {
+          this.ingestMarkdownFiles();
+        }, 1000);
+      }
+    });
+    
+    this.context.subscriptions.push(watcher);
+  }
+
+  private setupTreeView() {
+    vscode.window.registerTreeDataProvider('zanaiAgents', this.agentProvider);
+    vscode.window.registerTreeDataProvider('zanaiCodeFiles', this.zanaiCodeProvider);
+  }
+
+  async connect() {
+    try {
+      if (!this.workspaceId) {
+        await this.promptForWorkspaceId();
+        if (!this.workspaceId) return;
+      }
+
+      this.socket = io(this.serverUrl);
+      
+      this.socket.on('connect', () => {
+        this.socket?.emit('register_workspace', {
+          workspaceId: this.workspaceId,
+          clientType: 'vscode'
+        });
+        
+        vscode.commands.executeCommand('setContext', 'zanai.connected', true);
+        this.statusBar.text = '$(check) Zanai Connected';
+        this.statusBar.tooltip = 'Zanai AI Assistant - Connected';
+        this.statusBar.command = 'zanai.disconnect';
+        
+        this.showNotification('Connected to Zanai server', 'info');
+        this.agentProvider.refresh(); // Load agents when connected
+      });
+
+      this.socket.on('disconnect', () => {
+        vscode.commands.executeCommand('setContext', 'zanai.connected', false);
+        this.statusBar.text = '$(plug) Zanai';
+        this.statusBar.tooltip = 'Zanai AI Assistant';
+        this.statusBar.command = 'zanai.connect';
+        
+        this.showNotification('Disconnected from Zanai server', 'warning');
+      });
+
+      this.socket.on('error', (error) => {
+        this.showNotification(`Zanai error: ${error.message}`, 'error');
+      });
+
+      this.socket.on('vscode_context_update', (data) => {
+        // Handle context updates from other clients
+        console.log('Context updated:', data);
+      });
+
+      this.socket.on('agent_execution_started', (data) => {
+        this.showNotification(`Agent "${data.agentName}" started executing`, 'info');
+      });
+
+      this.socket.on('agent_execution_completed', (data) => {
+        this.showNotification(`Agent execution completed`, 'info');
+        this.showAgentResult(data.result);
+      });
+
+      this.socket.on('agent_execution_error', (data) => {
+        this.showNotification(`Agent execution failed: ${data.error}`, 'error');
+      });
+
+      this.socket.on('context_update_requested', () => {
+        this.syncContext();
+      });
+
+      this.socket.on('workspace_message', (data) => {
+        this.showNotification(data.message, data.type);
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to connect: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    
+    vscode.commands.executeCommand('setContext', 'zanai.connected', false);
+    this.statusBar.text = '$(plug) Zanai';
+    this.statusBar.tooltip = 'Zanai AI Assistant';
+    this.statusBar.command = 'zanai.connect';
+    
+    this.showNotification('Disconnected from Zanai', 'info');
+  }
+
+  async syncContext() {
+    if (!this.socket?.connected || !this.workspaceId) {
+      this.showNotification('Not connected to Zanai', 'warning');
+      return;
+    }
+
+    try {
+      const context = await this.getCurrentContext();
+      
+      this.socket.emit('vscode_context_sync', {
+        workspaceId: this.workspaceId,
+        context: context
+      });
+
+      // Also sync via HTTP API
+      await axios.post(`${this.serverUrl}/api/vscode`, {
+        action: 'sync_context',
+        data: context,
+        workspaceId: this.workspaceId
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to sync context: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  private async getCurrentContext(): Promise<VSCodeContext> {
+    const files: Array<{ path: string; content: string; language: string }> = [];
+    const activeEditor = vscode.window.activeTextEditor;
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+
+    // Get active file
+    let activeFile: string | null = null;
+    if (activeEditor) {
+      const document = activeEditor.document;
+      activeFile = document.uri.fsPath;
+      
+      // Add active file to context
+      files.push({
+        path: document.uri.fsPath,
+        content: document.getText(),
+        language: document.languageId
+      });
+    }
+
+    // Get other open files
+    vscode.workspace.textDocuments.forEach(document => {
+      if (document !== activeEditor?.document && !document.isUntitled) {
+        files.push({
+          path: document.uri.fsPath,
+          content: document.getText(),
+          language: document.languageId
+        });
+      }
+    });
+
+    return {
+      files: files.slice(0, 10), // Limit to 10 files
+      activeFile,
+      workspacePath: workspaceFolders?.[0]?.uri.fsPath || '',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async executeAgent() {
+    if (!this.socket?.connected || !this.workspaceId) {
+      this.showNotification('Not connected to Zanai', 'warning');
+      return;
+    }
+
+    try {
+      // Get available agents
+      const response = await axios.post(`${this.serverUrl}/api/vscode`, {
+        action: 'get_agents',
+        workspaceId: this.workspaceId
+      });
+
+      const agents = response.data.agents;
+      
+      if (agents.length === 0) {
+        this.showNotification('No agents available', 'warning');
+        return;
+      }
+
+      // Let user select agent
+      const agentNames = agents.map((agent: Agent) => agent.name);
+      const selectedAgent = await vscode.window.showQuickPick(agentNames, {
+        placeHolder: 'Select an agent to execute'
+      });
+
+      if (!selectedAgent) return;
+
+      const agent = agents.find((a: Agent) => a.name === selectedAgent);
+      
+      // Get input from user
+      const input = await vscode.window.showInputBox({
+        prompt: `Enter input for ${agent.name}`,
+        placeHolder: 'What do you want the agent to do?'
+      });
+
+      if (!input) return;
+
+      // Execute agent via WebSocket
+      this.socket.emit('execute_agent', {
+        agentId: agent.id,
+        input: input,
+        workspaceId: this.workspaceId,
+        context: await this.getCurrentContext()
+      });
+
+      this.showNotification(`Executing ${agent.name}...`, 'info');
+
+    } catch (error) {
+      this.showNotification(`Failed to execute agent: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  async showAgents() {
+    if (!this.workspaceId) {
+      this.showNotification('Workspace ID not configured', 'warning');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${this.serverUrl}/api/vscode`, {
+        action: 'get_agents',
+        workspaceId: this.workspaceId
+      });
+
+      const agents = response.data.agents;
+      
+      if (agents.length === 0) {
+        vscode.window.showInformationMessage('No agents available in this workspace');
+        return;
+      }
+
+      const agentList = agents.map((agent: Agent) => 
+        `${agent.name} (${agent.type}) - ${agent.description || 'No description'}`
+      );
+      
+      vscode.window.showQuickPick(agentList, {
+        placeHolder: 'Available Agents'
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to fetch agents: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  private showAgentResult(result: any) {
+    const panel = vscode.window.createWebviewPanel(
+      'zanai-result',
+      'Agent Execution Result',
+      vscode.ViewColumn.Beside,
+      {}
+    );
+
+    panel.webview.html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Agent Result</title>
+        <style>
+          body { font-family: var(--vscode-font-family); padding: 20px; }
+          h1 { color: var(--vscode-foreground); }
+          pre { background: var(--vscode-textBlockQuote-background); padding: 10px; border-radius: 4px; }
+          .action { margin: 10px 0; padding: 10px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-radius: 4px; }
+        </style>
+      </head>
+      <body>
+        <h1>Agent Execution Result</h1>
+        <h2>Output</h2>
+        <pre>${result.output}</pre>
+        
+        <h2>Actions</h2>
+        ${result.actions.map((action: any) => `
+          <div class="action">
+            <strong>${action.type}:</strong> ${action.description}
+          </div>
+        `).join('')}
+      </body>
+      </html>
+    `;
+  }
+
+  private openWebInterface() {
+    vscode.env.openExternal(vscode.Uri.parse(this.serverUrl));
+  }
+
+  private showNotification(message: string, type: 'info' | 'warning' | 'error' = 'info') {
+    if (!vscode.workspace.getConfiguration('zanai').get('showNotifications', true)) {
+      return;
+    }
+
+    switch (type) {
+      case 'error':
+        vscode.window.showErrorMessage(message);
+        break;
+      case 'warning':
+        vscode.window.showWarningMessage(message);
+        break;
+      default:
+        vscode.window.showInformationMessage(message);
+    }
+  }
+
+  // ZanaiCode integration methods
+  async ingestMarkdownFiles() {
+    try {
+      const result = await this.zanaiCodeIntegration.ingestMarkdownFiles();
+      this.showNotification(`✓ ${result.files} markdown files ingested (session only)`, 'info');
+      this.zanaiCodeProvider.refresh(); // Refresh the tree view
+    } catch (error) {
+      this.showNotification(`Failed to ingest markdown files: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  async showIngestedFiles() {
+    try {
+      const files = await this.zanaiCodeIntegration.getIngestedFiles();
+      
+      if (files.length === 0) {
+        vscode.window.showInformationMessage('No markdown files have been ingested yet');
+        return;
+      }
+      
+      const panel = vscode.window.createWebviewPanel(
+        'zanaiCode-ingested-files',
+        'ZanaiCode - Ingested Files',
+        vscode.ViewColumn.Beside,
+        {}
+      );
+
+      panel.webview.html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>ZanaiCode - Ingested Files</title>
+          <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            h1 { color: var(--vscode-foreground); }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--vscode-panel-border); }
+            th { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+            .file-path { font-family: monospace; font-size: 12px; }
+            .size { text-align: right; }
+            .actions { white-space: nowrap; }
+            button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 8px; margin: 0 2px; cursor: pointer; }
+            button:hover { background: var(--vscode-button-hoverBackground); }
+          </style>
+        </head>
+        <body>
+          <h1>ZanaiCode - Ingested Files</h1>
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Last Modified</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${files.map(file => `
+                <tr>
+                  <td class="file-path">${file.path}</td>
+                  <td class="size">${file.size} bytes</td>
+                  <td>${file.lastModified.toLocaleString()}</td>
+                  <td class="actions">
+                    <button onclick="viewFile('${file.path}')">View</button>
+                    <button onclick="copyPath('${file.path}')">Copy Path</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <script>
+            const vscode = acquireVsCodeApi();
+            function viewFile(path) {
+              vscode.postMessage({ command: 'viewFile', path });
+            }
+            function copyPath(path) {
+              navigator.clipboard.writeText(path);
+              alert('Path copied to clipboard');
+            }
+          </script>
+        </body>
+        </html>
+      `;
+
+      panel.webview.onDidReceiveMessage(async (message) => {
+        if (message.command === 'viewFile') {
+          const file = files.find(f => f.path === message.path);
+          if (file) {
+            await this.zanaiCodeProvider.viewFileContent(file);
+          }
+        }
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to show ingested files: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }ve been ingested yet.');
+        return;
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        'kiloCodeFiles',
+        'KiloCode - Ingested Files',
+        vscode.ViewColumn.Beside,
+        {}
+      );
+
+      panel.webview.html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>KiloCode - Ingested Files</title>
+          <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            h1 { color: var(--vscode-foreground); }
+            h2 { color: var(--vscode-foreground); border-bottom: 1px solid var(--vscode-panel-border); }
+            .file-item { margin: 10px 0; padding: 10px; background: var(--vscode-textBlockQuote-background); border-radius: 4px; }
+            .file-path { font-weight: bold; color: var(--vscode-foreground); }
+            .file-info { font-size: 12px; color: var(--vscode-descriptionForeground); }
+            .file-content { margin-top: 10px; white-space: pre-wrap; font-family: monospace; }
+            button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 16px; margin: 4px; cursor: pointer; }
+            button:hover { background: var(--vscode-button-hoverBackground); }
+          </style>
+        </head>
+        <body>
+          <h1>KiloCode - Ingested Files</h1>
+          <p>${files.length} files loaded in memory (session only)</p>
+          
+          ${files.map(file => `
+            <div class="file-item">
+              <div class="file-path">${file.path}</div>
+              <div class="file-info">Size: ${file.size} bytes | Modified: ${file.lastModified.toLocaleString()}</div>
+              <div class="file-content">${file.content.substring(0, 500)}${file.content.length > 500 ? '...' : ''}</div>
+            </div>
+          `).join('')}
+          
+          <button onclick="clearMemory()">Clear Memory</button>
+          <button onclick="closePanel()">Close</button>
+          
+          <script>
+            const vscode = acquireVsCodeApi();
+            
+            function clearMemory() {
+              vscode.postMessage({ command: 'clearMemory' });
+            }
+            
+            function closePanel() {
+              vscode.postMessage({ command: 'closePanel' });
+            }
+          </script>
+        </body>
+        </html>
+      `;
+
+      panel.webview.onDidReceiveMessage(async (message) => {
+        switch (message.command) {
+          case 'clearMemory':
+            await this.clearKiloCodeMemory();
+            panel.dispose();
+            break;
+          case 'closePanel':
+            panel.dispose();
+            break;
+        }
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to show ingested files: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  async clearKiloCodeMemory() {
+    try {
+      await this.kiloCodeIntegration.clearMemory();
+      this.kiloCodeProvider.refresh(); // Refresh the tree view
+      this.showNotification('KiloCode memory cleared', 'info');
+    } catch (error) {
+      this.showNotification(`Failed to clear memory: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  async searchInKiloCodeMemory() {
+    const query = await vscode.window.showInputBox({
+      prompt: 'Search in KiloCode memory',
+      placeHolder: 'Enter search terms...'
+    });
+
+    if (!query) return;
+
+    try {
+      const results = await this.kiloCodeIntegration.searchInMemory(query);
+      
+      if (results.length === 0) {
+        vscode.window.showInformationMessage(`No files found matching "${query}"`);
+        return;
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        'kiloCodeSearch',
+        `KiloCode - Search Results`,
+        vscode.ViewColumn.Beside,
+        {}
+      );
+
+      panel.webview.html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>KiloCode - Search Results</title>
+          <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            h1 { color: var(--vscode-foreground); }
+            h2 { color: var(--vscode-foreground); border-bottom: 1px solid var(--vscode-panel-border); }
+            .file-item { margin: 10px 0; padding: 10px; background: var(--vscode-textBlockQuote-background); border-radius: 4px; }
+            .file-path { font-weight: bold; color: var(--vscode-foreground); }
+            .match-highlight { background: var(--vscode-editor-findMatchHighlightBackground); }
+            button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 16px; margin: 4px; cursor: pointer; }
+            button:hover { background: var(--vscode-button-hoverBackground); }
+          </style>
+        </head>
+        <body>
+          <h1>KiloCode - Search Results</h1>
+          <p>Found ${results.length} files matching "${query}"</p>
+          
+          ${results.map(file => {
+            const content = file.content;
+            const regex = new RegExp(query, 'gi');
+            const highlightedContent = content.replace(regex, match => `<span class="match-highlight">${match}</span>`);
+            
+            return `
+              <div class="file-item">
+                <div class="file-path">${file.path}</div>
+                <div class="file-content">${highlightedContent.substring(0, 300)}${highlightedContent.length > 300 ? '...' : ''}</div>
+              </div>
+            `;
+          }).join('')}
+          
+          <button onclick="closePanel()">Close</button>
+          
+          <script>
+            const vscode = acquireVsCodeApi();
+            
+            function closePanel() {
+              vscode.postMessage({ command: 'closePanel' });
+            }
+          </script>
+        </body>
+        </html>
+      `;
+
+      panel.webview.onDidReceiveMessage(async (message) => {
+        switch (message.command) {
+          case 'closePanel':
+            panel.dispose();
+            break;
+        }
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to search memory: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  async toggleMemoryMode() {
+    try {
+      const config = this.kiloCodeIntegration.getConfig();
+      await this.kiloCodeIntegration.updateConfig({ memoryMode: !config.memoryMode });
+      this.showNotification(`Memory mode ${!config.memoryMode ? 'enabled' : 'disabled'}`, 'info');
+    } catch (error) {
+      this.showNotification(`Failed to toggle memory mode: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  async showKiloCodeConfig() {
+    try {
+      const config = this.kiloCodeIntegration.getConfig();
+      
+      const panel = vscode.window.createWebviewPanel(
+        'kiloCodeConfig',
+        'KiloCode - Configuration',
+        vscode.ViewColumn.Beside,
+        {}
+      );
+
+      panel.webview.html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>KiloCode - Configuration</title>
+          <style>
+            body { font-family: var(--vscode-font-family); padding: 20px; }
+            h1 { color: var(--vscode-foreground); }
+            h2 { color: var(--vscode-foreground); border-bottom: 1px solid var(--vscode-panel-border); }
+            .config-item { margin: 10px 0; padding: 10px; background: var(--vscode-textBlockQuote-background); border-radius: 4px; }
+            .config-key { font-weight: bold; color: var(--vscode-foreground); }
+            .config-value { margin-left: 10px; }
+            .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+            .status.enabled { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+            .status.disabled { background: var(--vscode-errorForeground); color: var(--vscode-editor-background); }
+            button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 16px; margin: 4px; cursor: pointer; }
+            button:hover { background: var(--vscode-button-hoverBackground); }
+          </style>
+        </head>
+        <body>
+          <h1>KiloCode Configuration</h1>
+          
+          <div class="config-item">
+            <div class="config-key">Enabled:</div>
+            <div class="config-value">
+              <span class="status ${config.enabled ? 'enabled' : 'disabled'}">${config.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          </div>
+          
+          <div class="config-item">
+            <div class="config-key">Memory Mode:</div>
+            <div class="config-value">
+              <span class="status ${config.memoryMode ? 'enabled' : 'disabled'}">${config.memoryMode ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          </div>
+          
+          <div class="config-item">
+            <div class="config-key">Auto Ingest:</div>
+            <div class="config-value">
+              <span class="status ${config.autoIngest ? 'enabled' : 'disabled'}">${config.autoIngest ? 'Enabled' : 'Disabled'}</span>
+            </div>
+          </div>
+          
+          <div class="config-item">
+            <div class="config-key">HippoCampus Path:</div>
+            <div class="config-value">${config.hippoCampusPath}</div>
+          </div>
+          
+          <div class="config-item">
+            <div class="config-key">Project Root Path:</div>
+            <div class="config-value">${config.projectRootPath}</div>
+          </div>
+          
+          <button onclick="toggleMemoryMode()">Toggle Memory Mode</button>
+          <button onclick="ingestFiles()">Ingest Files</button>
+          <button onclick="closePanel()">Close</button>
+          
+          <script>
+            const vscode = acquireVsCodeApi();
+            
+            function toggleMemoryMode() {
+              vscode.postMessage({ command: 'toggleMemoryMode' });
+            }
+            
+            function ingestFiles() {
+              vscode.postMessage({ command: 'ingestFiles' });
+            }
+            
+            function closePanel() {
+              vscode.postMessage({ command: 'closePanel' });
+            }
+          </script>
+        </body>
+        </html>
+      `;
+
+      panel.webview.onDidReceiveMessage(async (message) => {
+        switch (message.command) {
+          case 'toggleMemoryMode':
+            await this.toggleMemoryMode();
+            panel.dispose();
+            break;
+          case 'ingestFiles':
+            await this.ingestMarkdownFiles();
+            panel.dispose();
+            break;
+          case 'closePanel':
+            panel.dispose();
+            break;
+        }
+      });
+
+    } catch (error) {
+      this.showNotification(`Failed to show configuration: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+
+  deactivate() {
+    this.disconnect();
+    this.statusBar.dispose();
+  }
+}
+
+let extension: ZanaiExtension;
+
+export function activate(context: vscode.ExtensionContext) {
+  extension = new ZanaiExtension(context);
+  extension.activate();
+}
+
+export function deactivate() {
+  if (extension) {
+    extension.deactivate();
+  }
+}
