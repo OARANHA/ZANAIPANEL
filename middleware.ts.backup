@@ -1,0 +1,27 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  
+  console.log('=== MIDDLEWARE EXECUTADO PARA:', pathname, '===');
+  
+  // Forçar um redirecionamento de teste para /login em todas as rotas não públicas
+  const publicRoutes = ['/', '/login', '/register', '/planos', '/contato', '/servicos', '/demonstracao', '/doc', '/agentes', '/automacao', '/admin/login', '/test-auth', '/test-enterprise', '/test-admin-access'];
+  
+  if (!publicRoutes.includes(pathname) && !pathname.startsWith('/api/')) {
+    console.log('FORÇANDO REDIRECIONAMENTO PARA LOGIN DE:', pathname);
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+  
+  console.log('Permitindo acesso à rota:', pathname);
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    '/admin/:path*',
+    '/dashboard/:path*',
+    '/enterprise/:path*',
+  ],
+};
