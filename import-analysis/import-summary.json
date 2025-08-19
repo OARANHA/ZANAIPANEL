@@ -1,0 +1,44 @@
+{
+  "conversational": {
+    "name": "Conversational Agent",
+    "type": "AGENTFLOW",
+    "complexity": "complex",
+    "nodes": 6,
+    "edges": 4,
+    "suggestedAgentType": "composed",
+    "patterns": [
+      "custom-node-based"
+    ]
+  },
+  "tool": {
+    "name": "Tool Agent",
+    "type": "AGENTFLOW",
+    "complexity": "complex",
+    "nodes": 6,
+    "edges": 4,
+    "suggestedAgentType": "composed",
+    "patterns": [
+      "custom-node-based"
+    ]
+  },
+  "keyInsights": {
+    "conversationalVsTool": {
+      "difference": "Tool Agent é mais moderno e eficiente",
+      "recommendation": "Tool Agent é preferido para novos projetos",
+      "reason": "Usa Function Calling nativo em vez de prompts"
+    },
+    "structure": {
+      "commonComponents": [
+        "ChatOpenAI",
+        "Buffer Memory",
+        "Tools"
+      ],
+      "keyDifference": "Tool Agent vs Conversational Agent",
+      "complexity": "Ambos são complexos, mas Tool Agent é mais otimizado"
+    },
+    "zanaiMapping": {
+      "conversational": "custom agent com capacidades complexas",
+      "tool": "custom agent com ferramentas modernas"
+    }
+  }
+}

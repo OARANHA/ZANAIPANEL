@@ -106,8 +106,9 @@ export interface FlowiseEdge {
 
 /**
  * Detecta o tipo de template adequado baseado nas características do agente
+ * Utiliza API Z quando disponível para decisões mais inteligentes
  */
-function detectAgentTemplate(agent: AgentData): string {
+async function detectAgentTemplate(agent: AgentData): Promise<string> {
   const config = parseAgentConfig(agent.config);
   
   console.log('🔍 Detectando template para agente:', {
@@ -150,6 +151,31 @@ function detectAgentTemplate(agent: AgentData): string {
     return 'chat';
   }
   
+  // Tentar usar API Z para decisão inteligente (disponível apenas no backend)
+  try {
+    // Verificar se estamos no ambiente de backend
+    if (typeof window === 'undefined') {
+      const { zaiService } = await import('./z-ai-service');
+      
+      const templateSelection = await zaiService.selectOptimalTemplate({
+        name: agent.name,
+        description: agent.description || '',
+        type: agent.type,
+        config: agent.config,
+        knowledge: agent.knowledge,
+        capabilities: agent.capabilities || []
+      });
+      
+      console.log('🤖 API Z recomendou template:', templateSelection);
+      console.log('📊 Confiança:', templateSelection.confidence);
+      console.log('🧠 Razonamento:', templateSelection.reasoning);
+      
+      return templateSelection.template;
+    }
+  } catch (error) {
+    console.log('⚠️ Não foi possível usar API Z, usando detecção manual:', error.message);
+  }
+  
   // Padrão: usar template baseado no tipo original
   let templateType = 'chat'; // Template padrão
   switch (agent.type) {
@@ -173,11 +199,11 @@ function detectAgentTemplate(agent: AgentData): string {
 /**
  * Transforma dados de um Agent para o formato FlowiseWorkflow usando template dinâmico
  */
-export function transformAgentToFlowiseWorkflow(agent: AgentData): FlowiseWorkflowData {
+export async function transformAgentToFlowiseWorkflow(agent: AgentData): Promise<FlowiseWorkflowData> {
   console.log('🔄 Transformando agente para Flowise workflow:', agent.name);
 
   // Detectar o tipo de template adequado
-  const templateType = detectAgentTemplate(agent);
+  const templateType = await detectAgentTemplate(agent);
   console.log('📋 Template detectado:', templateType);
   
   // Extrair configuração do agente

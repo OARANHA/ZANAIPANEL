@@ -30,7 +30,9 @@ import {
   Edit,
   Trash2,
   Eye,
-  Rocket
+  Rocket,
+  Cpu,
+  Database
 } from 'lucide-react';
 import EditAgentDialog from '@/components/agents/EditAgentDialog';
 import AgentDetailsDialog from '@/components/agents/AgentDetailsDialog';
@@ -54,6 +56,9 @@ interface Agent {
     name: string;
     description: string;
   };
+  config?: string;
+  knowledge?: string;
+  status?: 'active' | 'inactive' | 'training';
 }
 
 interface Workspace {
@@ -398,6 +403,43 @@ ${JSON.stringify(agent.groups, null, 2)}
 
 *Este arquivo foi gerado automaticamente pelo sistema Zanai Project.*
 `;
+  };
+
+  // Função para extrair informações da configuração do agente
+  const extractAgentInfo = (agent: Agent) => {
+    let llmModel = 'gpt-4o-mini'; // padrão
+    let temperature = 0.7;
+    let hasTools = false;
+    let hasKnowledge = false;
+
+    try {
+      if (agent.config) {
+        // Tentar fazer parse da configuração como JSON
+        const config = JSON.parse(agent.config);
+        llmModel = config.model || config.modelName || llmModel;
+        temperature = config.temperature || temperature;
+        hasTools = !!(config.tools && config.tools.length > 0);
+      }
+    } catch (error) {
+      // Se não for JSON, tentar extrair do YAML/texto
+      const configText = agent.config || '';
+      const modelMatch = configText.match(/(?:model|modelName):\s*([^\n\s]+)/i);
+      const tempMatch = configText.match(/temperature:\s*([0-9.]+)/i);
+      
+      if (modelMatch) llmModel = modelMatch[1];
+      if (tempMatch) temperature = parseFloat(tempMatch[1]);
+      
+      hasTools = configText.toLowerCase().includes('tools') || configText.toLowerCase().includes('function');
+    }
+
+    hasKnowledge = !!(agent.knowledge && agent.knowledge.trim().length > 0);
+
+    return {
+      llmModel,
+      temperature,
+      hasTools,
+      hasKnowledge
+    };
   };
 
   const shareAgent = async (agent: Agent) => {
@@ -760,12 +802,14 @@ ${JSON.stringify(agent.groups, null, 2)}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredAgents.map((agent) => {
                   const TypeIcon = getTypeIcon(agent.type);
+                  const agentInfo = extractAgentInfo(agent);
                   return (
                     <ElegantCard
                       key={agent.id}
                       title={agent.name}
                       description={agent.description}
                       icon={TypeIcon}
+                      subtitle={`Modelo: ${agentInfo.llmModel}`}
                       iconColor={agent.type === 'template' ? 'text-blue-600' : 
                                agent.type === 'custom' ? 'text-purple-600' : 'text-green-600'}
                       bgColor={agent.type === 'template' ? 'bg-blue-100 dark:bg-blue-900/20' : 
@@ -789,47 +833,50 @@ ${JSON.stringify(agent.groups, null, 2)}
                           onShare={handleShare}
                         />
                       }
+                      metadata={[
+                        {
+                          label: 'LLM',
+                          value: agentInfo.llmModel,
+                          icon: Cpu,
+                          color: 'text-blue-600'
+                        },
+                        {
+                          label: 'Temp',
+                          value: agentInfo.temperature.toString(),
+                          icon: Zap,
+                          color: 'text-orange-600'
+                        },
+                        {
+                          label: 'Ferramentas',
+                          value: agentInfo.hasTools ? 'Sim' : 'Não',
+                          icon: Target,
+                          color: agentInfo.hasTools ? 'text-green-600' : 'text-gray-600'
+                        },
+                        {
+                          label: 'Conhecimento',
+                          value: agentInfo.hasKnowledge ? 'Sim' : 'Não',
+                          icon: Database,
+                          color: agentInfo.hasKnowledge ? 'text-green-600' : 'text-gray-600'
+                        }
+                      ]}
                     >
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                            <span className="text-sm text-muted-foreground">Ativo</span>
-                          </div>
-                          
-                          <div className="flex items-center space-x-1">
-                            <Badge variant="outline" className="text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700">
-                              <Zap className="w-3 h-3 mr-1" />
-                              Pronto
-                            </Badge>
-                          </div>
-                        </div>
-                        
-                        {agent.workspace && (
-                          <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                            <Users className="w-3 h-3" />
-                            <span>{agent.workspace.name}</span>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center space-x-2">
-                          <Button 
-                            size="sm" 
-                            className="flex-1 h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                            onClick={() => handleExecute(agent)}
-                          >
-                            <Play className="w-4 h-4 mr-1" />
-                            Executar
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="h-9"
-                            onClick={() => handleEditAgent(agent)}
-                          >
-                            <Settings className="w-4 h-4" />
-                          </Button>
-                        </div>
+                      <div className="flex items-center space-x-2">
+                        <Button 
+                          size="sm" 
+                          className="flex-1 h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                          onClick={() => handleExecute(agent)}
+                        >
+                          <Play className="w-4 h-4 mr-1" />
+                          Executar
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-9"
+                          onClick={() => handleEditAgent(agent)}
+                        >
+                          <Settings className="w-4 h-4" />
+                        </Button>
                       </div>
                     </ElegantCard>
                   );

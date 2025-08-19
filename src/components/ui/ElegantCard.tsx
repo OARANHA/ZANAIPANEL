@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { LucideIcon } from 'lucide-react';
-import { Eye, Edit, MoreVertical } from 'lucide-react';
+import { Eye, Edit, MoreVertical, Cpu, Database } from 'lucide-react';
 
 interface ElegantCardProps {
   title: string;
@@ -26,6 +26,9 @@ interface ElegantCardProps {
   onViewDetails?: () => void;
   onEdit?: () => void;
   actionsMenu?: ReactNode;
+  // Props adicionais para informações do agente
+  subtitle?: string;
+  metadata?: Array<{ label: string; value: string; icon?: LucideIcon; color?: string }>;
 }
 
 export default function ElegantCard({
@@ -44,7 +47,9 @@ export default function ElegantCard({
   showActions = false,
   onViewDetails,
   onEdit,
-  actionsMenu
+  actionsMenu,
+  subtitle,
+  metadata
 }: ElegantCardProps) {
   const CardWrapper = href && !onClick ? 'a' : 'div';
   const wrapperProps = href && !onClick 
@@ -112,6 +117,11 @@ export default function ElegantCard({
           <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
             {title}
           </CardTitle>
+          {subtitle && (
+            <div className="text-sm text-muted-foreground mt-1 flex items-center">
+              {subtitle}
+            </div>
+          )}
           {description && (
             <CardDescription className="mt-1 text-gray-600 dark:text-gray-300">
               {description}
@@ -144,6 +154,25 @@ export default function ElegantCard({
         )}
         
         {!badge && children}
+        
+        {metadata && metadata.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {metadata.map((item, index) => {
+              const IconComponent = item.icon;
+              return (
+                <div key={index} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2 text-muted-foreground">
+                    {IconComponent && (
+                      <IconComponent className={`w-3 h-3 ${item.color || 'text-gray-500'}`} />
+                    )}
+                    <span>{item.label}:</span>
+                  </div>
+                  <span className="font-medium text-foreground">{item.value}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
       
       {/* Subtle border animation */}
