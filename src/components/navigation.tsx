@@ -38,7 +38,6 @@ const navigation = [
   { name: "Demonstração", href: "/demonstracao", icon: Play },
   { name: "Agentes de IA", href: "/agentes", icon: Bot },
   { name: "Automação Avançada", href: "/automacao", icon: Zap },
-  { name: "Workflows Flowise", href: "/flowise-workflows", icon: Database },
   { name: "Serviços", href: "/servicos", icon: Settings },
   { name: "Planos", href: "/planos", icon: Workflow },
   { name: "Doc", href: "/doc", icon: BookOpen },

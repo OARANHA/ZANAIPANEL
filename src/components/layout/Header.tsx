@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Brain, Menu, X, BookOpen, Upload, Users, UserPlus, LogOut } from 'lucide-react';
+import { Brain, Menu, X, BookOpen, Upload, Users, UserPlus, LogOut, Database } from 'lucide-react';
 
 interface HeaderProps {
   currentPath?: string;
@@ -18,6 +18,7 @@ export default function Header({ currentPath = '/' }: HeaderProps) {
     { name: 'Especialistas', href: '/admin/specialists', icon: Brain },
     { name: 'Composições', href: '/admin/compositions', icon: Brain },
     { name: 'Clientes', href: '/admin/clients', icon: Users },
+    { name: 'Flowise Workflows', href: '/admin/flowise-workflows', icon: Database },
     { name: 'Upload', href: '/admin/upload', icon: Upload },
     { name: 'Cadastro', href: '/register', icon: UserPlus },
     { name: 'Explicação', href: '/admin/explicacao', icon: BookOpen },
