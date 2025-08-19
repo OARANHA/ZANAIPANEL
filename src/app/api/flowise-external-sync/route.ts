@@ -33,15 +33,66 @@ async function makeFlowiseRequest(endpoint: string, options: RequestInit = {}) {
   };
 
   try {
+    console.log('🌐 Making request to:', {
+      url,
+      method: options.method || 'GET',
+      headers: Object.keys(headers),
+      bodySize: options.body ? JSON.stringify(options.body).length : 0
+    });
+
     const response = await fetch(url, fetchOptions);
+    
+    console.log('📡 Response received:', {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type'),
+      contentLength: response.headers.get('content-length')
+    });
     
     // Handle different response types
     let data;
     const contentType = response.headers.get('content-type');
+    
     if (contentType && contentType.includes('application/json')) {
-      data = await response.json();
+      try {
+        data = await response.json();
+        console.log('✅ JSON response parsed successfully');
+      } catch (jsonError) {
+        console.error('❌ Failed to parse JSON response:', jsonError);
+        const textData = await response.text();
+        console.log('📄 Raw response (first 200 chars):', textData.substring(0, 200));
+        throw new Error(`Invalid JSON response: ${textData.substring(0, 100)}`);
+      }
     } else {
       data = await response.text();
+      console.log('📄 Text response received (first 500 chars):', data.substring(0, 500));
+      
+      // If we got HTML instead of JSON, that's probably an error page
+      if (data.includes('<!DOCTYPE') || data.includes('<html')) {
+        console.error('❌ Received HTML response instead of JSON - this indicates an error page');
+        console.error('🔍 HTML Response Analysis:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: url,
+          containsError: data.includes('error') || data.includes('Error') || data.includes('404') || data.includes('500'),
+          titleMatch: data.match(/<title>(.*?)<\/title>/)?.[1] || 'No title found',
+          bodySnippet: data.substring(0, 200).replace(/\n/g, ' ').trim()
+        });
+        
+        // Try to extract more meaningful error information from the HTML
+        let errorDetails = 'Server returned HTML error page instead of JSON';
+        if (data.includes('404')) {
+          errorDetails = 'API endpoint not found (404 error)';
+        } else if (data.includes('500')) {
+          errorDetails = 'Internal server error (500 error)';
+        } else if (data.includes('unauthorized') || data.includes('Unauthorized')) {
+          errorDetails = 'Authentication failed or unauthorized access';
+        } else if (data.includes('login') || data.includes('Login')) {
+          errorDetails = 'Server requires authentication or login';
+        }
+        
+        throw new Error(`${errorDetails}. Status: ${response.status} ${response.statusText}. URL: ${url}`);
+      }
     }
 
     return { response, data };
@@ -219,27 +270,76 @@ export async function POST(request: NextRequest) {
 
 async function handleTestConnection(config: any) {
   try {
-    // Teste simples de conexão com a instância externa
-    const { response, data } = await makeFlowiseRequest('/', { method: 'GET' });
+    // Teste de conexão com endpoints API em vez da página principal
+    console.log('🔧 Testando conexão com endpoints API...');
+    
+    // Tentar endpoint de saúde primeiro
+    try {
+      const { response, data } = await makeFlowiseRequest('/api/v1/health', { method: 'GET' });
 
-    if (response.ok) {
-      return NextResponse.json({
-        success: true,
-        message: 'Conexão com Flowise externo estabelecida com sucesso',
-        data: {
-          status: response.status,
-          statusText: response.statusText,
-          baseUrl: config.baseUrl,
-          hasAuth: !!config.apiKey && config.apiKey !== 'your_flowise_api_key_here'
+      if (response.ok) {
+        return NextResponse.json({
+          success: true,
+          message: 'Conexão com Flowise externo estabelecida com sucesso (endpoint de saúde)',
+          data: {
+            status: response.status,
+            statusText: response.statusText,
+            baseUrl: config.baseUrl,
+            hasAuth: !!config.apiKey && config.apiKey !== 'your_flowise_api_key_here',
+            endpoint: '/api/v1/health'
+          }
+        });
+      }
+    } catch (healthError) {
+      console.warn('⚠️ Endpoint de saúde não disponível, tentando endpoint de chatflows...');
+    }
+    
+    // Fallback para endpoint de chatflows
+    try {
+      const { response, data } = await makeFlowiseRequest('/api/v1/chatflows', { method: 'GET' });
+
+      if (response.ok) {
+        return NextResponse.json({
+          success: true,
+          message: 'Conexão com Flowise externo estabelecida com sucesso (endpoint de chatflows)',
+          data: {
+            status: response.status,
+            statusText: response.statusText,
+            baseUrl: config.baseUrl,
+            hasAuth: !!config.apiKey && config.apiKey !== 'your_flowise_api_key_here',
+            endpoint: '/api/v1/chatflows',
+            workflowsCount: Array.isArray(data) ? data.length : 'unknown'
+          }
+        });
+      } else {
+        throw new Error(`Falha na conexão: HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (chatflowsError) {
+      console.warn('⚠️ Endpoint de chatflows também falhou, tentando página principal como último recurso...');
+      
+      // Último recurso: tentar a página principal (pode retornar HTML, mas indica que o servidor está online)
+      try {
+        const { response, data } = await makeFlowiseRequest('/', { method: 'GET' });
+
+        if (response.ok) {
+          return NextResponse.json({
+            success: true,
+            message: 'Servidor Flowise está online, mas endpoints API podem ter problemas',
+            data: {
+              status: response.status,
+              statusText: response.statusText,
+              baseUrl: config.baseUrl,
+              hasAuth: !!config.apiKey && config.apiKey !== 'your_flowise_api_key_here',
+              endpoint: '/',
+              warning: 'Servidor respondeu, mas endpoints API podem não estar funcionando corretamente'
+            }
+          });
+        } else {
+          throw new Error(`Falha na conexão: HTTP ${response.status}: ${response.statusText}`);
         }
-      });
-    } else {
-      return NextResponse.json({
-        success: false,
-        message: 'Falha ao conectar com o servidor Flowise',
-        error: `HTTP ${response.status}: ${response.statusText}`,
-        data
-      });
+      } catch (rootError) {
+        throw new Error(`Todos os endpoints falharam. Saúde: ${healthError?.message || 'unknown'}, Chatflows: ${chatflowsError?.message || 'unknown'}, Root: ${rootError?.message || 'unknown'}`);
+      }
     }
   } catch (error) {
     return NextResponse.json({
@@ -765,6 +865,324 @@ async function handleCreateVariable(config: any, variableData: any) {
   }
 }
 
+/**
+ * Garante que um nó tenha a estrutura completa necessária para o Flowise
+ * Baseado no tipo do nó, adiciona as propriedades necessárias como inputParams, inputAnchors, outputAnchors, etc.
+ */
+function ensureCompleteNodeStructure(node: any): any {
+  const nodeType = node.name || node.type || 'customNode';
+  const category = node.category || 'Custom';
+  
+  console.log(`🔧 Estruturando nó ${node.id} do tipo ${nodeType}...`);
+  
+  // Preservar todas as propriedades originais do nó
+  const completeNode = { ...node };
+  
+  // Garantir que o objeto data existe e tem estrutura completa
+  if (!completeNode.data) {
+    completeNode.data = {
+      id: node.id,
+      label: node.name || node.id,
+      name: node.name || 'unknown',
+      type: nodeType,
+      category: category
+    };
+  } else {
+    // Preservar data existente e garantir propriedades básicas
+    completeNode.data = {
+      ...completeNode.data,
+      id: completeNode.data.id || node.id,
+      label: completeNode.data.label || node.name || node.id,
+      name: completeNode.data.name || node.name || 'unknown',
+      type: completeNode.data.type || nodeType,
+      category: completeNode.data.category || category
+    };
+  }
+  
+  // Adicionar estrutura completa baseada no tipo do nó
+  switch (nodeType.toLowerCase()) {
+    case 'chatopenai':
+      completeNode.data = {
+        ...completeNode.data,
+        version: 8.2,
+        baseClasses: ['ChatOpenAI', 'BaseChatModel', 'BaseLanguageModel', 'Runnable'],
+        description: 'Wrapper around OpenAI large language models that use the Chat endpoint',
+        inputParams: [
+          {
+            label: 'Model Name',
+            name: 'modelName',
+            type: 'asyncOptions',
+            loadMethod: 'listModels',
+            default: 'gpt-4o-mini',
+            optional: true,
+            id: `${node.id}-input-modelName-asyncOptions`,
+            display: true
+          },
+          {
+            label: 'Temperature',
+            name: 'temperature',
+            type: 'number',
+            step: 0.1,
+            default: 0.7,
+            optional: true,
+            id: `${node.id}-input-temperature-number`,
+            display: true
+          },
+          {
+            label: 'Max Tokens',
+            name: 'maxTokens',
+            type: 'number',
+            step: 1,
+            optional: true,
+            additionalParams: true,
+            id: `${node.id}-input-maxTokens-number`,
+            display: true
+          }
+        ],
+        inputAnchors: [
+          {
+            label: 'Cache',
+            name: 'cache',
+            type: 'BaseCache',
+            optional: true,
+            id: `${node.id}-input-cache-BaseCache`,
+            display: true
+          }
+        ],
+        outputAnchors: [
+          {
+            id: `${node.id}-output-chatOpenAI-ChatOpenAI|BaseChatModel|BaseLanguageModel|Runnable`,
+            name: 'chatOpenAI',
+            label: 'ChatOpenAI',
+            description: 'Wrapper around OpenAI large language models that use the Chat endpoint',
+            type: 'ChatOpenAI | BaseChatModel | BaseLanguageModel | Runnable'
+          }
+        ],
+        inputs: completeNode.data.inputs || {
+          cache: '',
+          modelName: node.inputs?.modelName || 'gpt-4o-mini',
+          temperature: node.inputs?.temperature || 0.7,
+          maxTokens: node.inputs?.maxTokens || ''
+        },
+        outputs: completeNode.data.outputs || {}
+      };
+      break;
+      
+    case 'calculator':
+      completeNode.data = {
+        ...completeNode.data,
+        version: 1.0,
+        baseClasses: ['Calculator', 'Tool', 'StructuredTool', 'BaseLangChain'],
+        description: 'Calculator tool for performing mathematical calculations',
+        inputParams: [],
+        inputAnchors: [],
+        outputAnchors: [
+          {
+            id: `${node.id}-output-calculator-Calculator|Tool|StructuredTool|BaseLangChain`,
+            name: 'calculator',
+            label: 'Calculator',
+            description: 'Calculator tool for performing mathematical calculations',
+            type: 'Calculator | Tool | StructuredTool | BaseLangChain'
+          }
+        ],
+        inputs: completeNode.data.inputs || {},
+        outputs: completeNode.data.outputs || {}
+      };
+      break;
+      
+    case 'buffermemory':
+      completeNode.data = {
+        ...completeNode.data,
+        version: 1.0,
+        baseClasses: ['BufferMemory', 'BaseChatMemory', 'BaseMemory'],
+        description: 'Buffer memory for storing conversation history',
+        inputParams: [
+          {
+            label: 'Session ID',
+            name: 'sessionId',
+            type: 'string',
+            optional: true,
+            id: `${node.id}-input-sessionId-string`,
+            display: true
+          },
+          {
+            label: 'Memory Key',
+            name: 'memoryKey',
+            type: 'string',
+            default: 'chat_history',
+            id: `${node.id}-input-memoryKey-string`,
+            display: true
+          }
+        ],
+        inputAnchors: [],
+        outputAnchors: [
+          {
+            id: `${node.id}-output-bufferMemory-BufferMemory|BaseChatMemory|BaseMemory`,
+            name: 'bufferMemory',
+            label: 'BufferMemory',
+            description: 'Buffer memory for storing conversation history',
+            type: 'BufferMemory | BaseChatMemory | BaseMemory'
+          }
+        ],
+        inputs: completeNode.data.inputs || {
+          sessionId: node.inputs?.sessionId || '',
+          memoryKey: node.inputs?.memoryKey || 'chat_history'
+        },
+        outputs: completeNode.data.outputs || {}
+      };
+      break;
+      
+    case 'serpapi':
+      completeNode.data = {
+        ...completeNode.data,
+        version: 1.0,
+        baseClasses: ['SerpAPI', 'Tool', 'StructuredTool', 'BaseLangChain'],
+        description: 'SerpAPI tool for web search',
+        inputParams: [],
+        inputAnchors: [],
+        outputAnchors: [
+          {
+            id: `${node.id}-output-serpAPI-SerpAPI|Tool|StructuredTool`,
+            name: 'serpAPI',
+            label: 'SerpAPI',
+            description: 'SerpAPI tool for web search',
+            type: 'SerpAPI | Tool | StructuredTool'
+          }
+        ],
+        inputs: completeNode.data.inputs || {},
+        outputs: completeNode.data.outputs || {}
+      };
+      break;
+      
+    case 'toolagent':
+      completeNode.data = {
+        ...completeNode.data,
+        version: 1.0,
+        baseClasses: ['ToolAgent', 'Agent', 'Runnable'],
+        description: 'Agent that can use tools to accomplish tasks',
+        inputParams: [
+          {
+            label: 'Tools',
+            name: 'tools',
+            type: 'tool',
+            list: true,
+            id: `${node.id}-input-tools-tool`,
+            display: true
+          },
+          {
+            label: 'Memory',
+            name: 'memory',
+            type: 'BaseChatMemory',
+            optional: true,
+            id: `${node.id}-input-memory-BaseChatMemory`,
+            display: true
+          },
+          {
+            label: 'Model',
+            name: 'model',
+            type: 'BaseChatModel',
+            id: `${node.id}-input-model-BaseChatModel`,
+            display: true
+          },
+          {
+            label: 'System Message',
+            name: 'systemMessage',
+            type: 'string',
+            default: 'You are a helpful AI assistant.',
+            rows: 4,
+            optional: true,
+            id: `${node.id}-input-systemMessage-string`,
+            display: true
+          }
+        ],
+        inputAnchors: [
+          {
+            label: 'Tools',
+            name: 'tools',
+            type: 'Tool',
+            list: true,
+            id: `${node.id}-input-tools-Tool`,
+            display: true
+          },
+          {
+            label: 'Memory',
+            name: 'memory',
+            type: 'BaseChatMemory',
+            optional: true,
+            id: `${node.id}-input-memory-BaseChatMemory`,
+            display: true
+          },
+          {
+            label: 'Model',
+            name: 'model',
+            type: 'BaseChatModel',
+            id: `${node.id}-input-model-BaseChatModel`,
+            display: true
+          }
+        ],
+        outputAnchors: [],
+        inputs: completeNode.data.inputs || {
+          tools: node.inputs?.tools || [],
+          memory: node.inputs?.memory || '',
+          model: node.inputs?.model || '',
+          systemMessage: node.inputs?.systemMessage || 'You are a helpful AI assistant.'
+        },
+        outputs: completeNode.data.outputs || {}
+      };
+      break;
+      
+    case 'stickynote':
+      completeNode.data = {
+        ...completeNode.data,
+        version: 1.0,
+        baseClasses: ['StickyNote'],
+        description: 'Sticky note for adding comments and documentation',
+        inputParams: [
+          {
+            label: 'Note',
+            name: 'note',
+            type: 'string',
+            rows: 4,
+            id: `${node.id}-input-note-string`,
+            display: true
+          }
+        ],
+        inputAnchors: [],
+        outputAnchors: [],
+        inputs: completeNode.data.inputs || {
+          note: node.inputs?.note || ''
+        },
+        outputs: completeNode.data.outputs || {}
+      };
+      break;
+      
+    default:
+      // Estrutura genérica para tipos desconhecidos
+      completeNode.data = {
+        ...completeNode.data,
+        version: 1.0,
+        baseClasses: ['CustomNode'],
+        description: `Custom node of type ${nodeType}`,
+        inputParams: [],
+        inputAnchors: [],
+        outputAnchors: [
+          {
+            id: `${node.id}-output-${nodeType}-${nodeType}`,
+            name: nodeType,
+            label: nodeType,
+            description: `Custom node of type ${nodeType}`,
+            type: nodeType
+          }
+        ],
+        inputs: completeNode.data.inputs || {},
+        outputs: completeNode.data.outputs || {}
+      };
+  }
+  
+  console.log(`✅ Nó ${node.id} estruturado com sucesso`);
+  return completeNode;
+}
+
 async function handleExportWorkflow(config: any, canvasId: string, workflowData: any) {
   let logId: string | null = null;
   
@@ -842,40 +1260,72 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
     let exportPayload = workflowData;
     let isTransformed = false;
     
+    // Preparar dados para verificação - fazer parse do flowData antes de verificar necessidade de transformação
+    let parsedFlowData;
+    try {
+      parsedFlowData = typeof exportPayload.flowData === 'string' ? JSON.parse(exportPayload.flowData) : exportPayload.flowData;
+    } catch (e) {
+      console.error('❌ Erro ao fazer parse do flowData:', e);
+      throw new Error('flowData inválido');
+    }
+    
     // Verificar se os dados parecem ser de um agente (têm campos específicos de agente)
-    if (workflowData && (
+    // OU se o flowData parece estar incompleto (sem data completo nos nodes)
+    const needsTransformation = workflowData && (
       workflowData.slug || 
       workflowData.config || 
       workflowData.knowledge ||
       workflowData.roleDefinition ||
-      workflowData.customInstructions
-    )) {
-      console.log('🔄 Detectados dados de agente, aplicando transformação...');
+      workflowData.customInstructions ||
+      // Verificar se o flowData tem nodes com estrutura incompleta
+      (parsedFlowData.nodes && parsedFlowData.nodes.some(node => 
+        !node.data || !node.data.inputParams || !node.data.inputAnchors || !node.data.outputAnchors
+      ))
+    );
+    
+    if (needsTransformation) {
+      console.log('🔄 Detectados dados que precisam de transformação/estruturação completa...');
       
       try {
-        // Transformar dados de agente para formato Flowise
-        const transformedData = transformAgentToFlowiseWorkflow(workflowData);
-        
-        // Validar dados transformados
-        const validation = validateTransformedData(transformedData);
-        if (!validation.valid) {
-          console.error('❌ Validação falhou:', validation.errors);
-          throw new Error(`Transformação inválida: ${validation.errors.join(', ')}`);
+        // Se for um agente, usar o transformer
+        if (workflowData.slug || workflowData.config) {
+          console.log('📋 Transformando dados de agente para formato Flowise...');
+          const transformedData = transformAgentToFlowiseWorkflow(workflowData);
+          
+          // Validar dados transformados
+          const validation = validateTransformedData(transformedData);
+          if (!validation.valid) {
+            console.error('❌ Validação falhou:', validation.errors);
+            throw new Error(`Transformação inválida: ${validation.errors.join(', ')}`);
+          }
+          
+          exportPayload = transformedData;
+          isTransformed = true;
+          
+          console.log('✅ Dados transformados com sucesso:', {
+            originalName: workflowData.name,
+            transformedName: transformedData.name,
+            originalType: workflowData.type,
+            transformedType: transformedData.type,
+            flowDataLength: transformedData.flowData.length
+          });
+        } else {
+          // Se não for um agente mas precisa de estruturação, usar o flowData original mas garantir estrutura completa
+          console.log('🔧 Estruturando flowData existente para formato completo...');
+          
+          // Para cada node, garantir a estrutura completa baseada no tipo
+          parsedFlowData.nodes = parsedFlowData.nodes.map(node => {
+            const completeNode = ensureCompleteNodeStructure(node);
+            return completeNode;
+          });
+          
+          // Atualizar o flowData no payload
+          exportPayload.flowData = JSON.stringify(parsedFlowData);
+          console.log('✅ flowData estruturado com sucesso');
         }
         
-        exportPayload = transformedData;
-        isTransformed = true;
-        
-        console.log('✅ Dados transformados com sucesso:', {
-          originalName: workflowData.name,
-          transformedName: transformedData.name,
-          originalType: workflowData.type,
-          transformedType: transformedData.type,
-          flowDataLength: transformedData.flowData.length
-        });
-        
       } catch (transformError) {
-        console.error('💥 Erro na transformação dos dados:', transformError);
+        console.error('💥 Erro na transformação/estruturação dos dados:', transformError);
         
         // Registrar erro de transformação
         if (logId) {
@@ -891,7 +1341,7 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
                   workflowName: workflowData.name || 'Unknown Workflow',
                   canvasId: canvasId,
                   error: { 
-                    message: 'Falha na transformação dos dados', 
+                    message: 'Falha na transformação/estruturação dos dados', 
                     details: transformError instanceof Error ? transformError.message : String(transformError),
                     type: 'TRANSFORMATION_ERROR'
                   },
@@ -906,7 +1356,7 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
         
         return NextResponse.json({
           success: false,
-          error: 'Falha na transformação dos dados para exportação',
+          error: 'Falha na transformação/estruturação dos dados para exportação',
           details: transformError instanceof Error ? transformError.message : String(transformError),
           debug: {
             transformError: transformError instanceof Error ? transformError.message : String(transformError),
@@ -916,20 +1366,61 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
       }
     }
 
-    // Preparar dados para exportação no formato esperado pelo Flowise
+    // Validar e corrigir o flowData (apenas propriedades básicas, a estrutura completa já foi gerada)
+    if (!parsedFlowData.nodes) {
+      parsedFlowData.nodes = [];
+    }
+    if (!parsedFlowData.edges) {
+      parsedFlowData.edges = [];
+    }
+    if (!parsedFlowData.viewport) {
+      parsedFlowData.viewport = { x: 0, y: 0, zoom: 1 };
+    }
+
+    // Validação mínima - apenas garantir que cada nó tem ID e categoria básica
+    parsedFlowData.nodes = parsedFlowData.nodes.map(node => {
+      if (!node.id) {
+        node.id = `node_${Math.random().toString(36).substr(2, 9)}`;
+      }
+      if (!node.category) {
+        node.category = 'Custom';
+      }
+      return node;
+    });
+
+    console.log('✅ flowData validado e corrigido:', {
+      nodesCount: parsedFlowData.nodes.length,
+      edgesCount: parsedFlowData.edges.length,
+      nodesWithoutCategory: parsedFlowData.nodes.filter(n => !n.category).length,
+      nodesWithoutDataCategory: parsedFlowData.nodes.filter(n => !n.data?.category).length,
+      nodesValidation: parsedFlowData.nodes.map(n => ({
+        id: n.id,
+        hasCategory: !!n.category,
+        hasData: !!n.data,
+        hasDataCategory: !!n.data?.category,
+        dataType: n.data?.type
+      }))
+    });
+
     const finalExportPayload = {
       name: exportPayload.name,
       description: exportPayload.description || '',
       type: exportPayload.type || 'CHATFLOW',
-      flowData: typeof exportPayload.flowData === 'string' ? exportPayload.flowData : JSON.stringify(exportPayload.flowData || {
-        nodes: [],
-        edges: [],
-        viewport: { x: 0, y: 0, zoom: 1 }
-      }),
+      flowData: JSON.stringify(parsedFlowData),
       deployed: exportPayload.deployed || false,
       isPublic: exportPayload.isPublic || false,
       category: exportPayload.category || 'general'
     };
+
+    // Log detalhado do payload final
+    console.log('📤 Payload final para envio:', {
+      url: '/api/v1/chatflows',
+      method: 'POST',
+      payload: finalExportPayload,
+      payloadSize: JSON.stringify(finalExportPayload).length,
+      flowDataSize: finalExportPayload.flowData.length,
+      hasAllRequiredFields: ['name', 'type', 'flowData'].every(field => field in finalExportPayload)
+    });
 
     // Adicionar campos opcionais apenas se forem válidos
     if (exportPayload.chatbotConfig && exportPayload.chatbotConfig !== '[object Object]') {
@@ -964,32 +1455,98 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
     // ESTRATÉGIA MELHORADA: Verificar se o workflow existe primeiro
     let workflowExists = false;
     let createInstead = false;
+    let existingWorkflowId = null;
+    let serverHealthCheck = false;
     
     try {
-      const checkResponse = await makeFlowiseRequest(`/api/v1/chatflows/${canvasId}`, { method: 'GET' });
-      workflowExists = checkResponse.response.ok;
+      // Primeiro, verificar a saúde do servidor Flowise com endpoints específicos
+      console.log('🏥 Verificando saúde do servidor Flowise...');
       
-      if (!workflowExists) {
-        console.log('📋 Workflow não existe, será criado um novo:', {
-          canvasId,
-          status: checkResponse.response.status,
-          statusText: checkResponse.response.statusText
-        });
+      // Tentar endpoint de saúde primeiro
+      try {
+        const { response: healthResponse, data: healthData } = await makeFlowiseRequest('/api/v1/health', { method: 'GET' });
+        
+        if (healthResponse.ok) {
+          console.log('✅ Servidor Flowise está saudável (endpoint de saúde)');
+          serverHealthCheck = true;
+        } else {
+          throw new Error('Endpoint de saúde não disponível');
+        }
+      } catch (healthError) {
+        console.warn('⚠️ Endpoint de saúde não disponível, tentando endpoint de chatflows...');
+        // Tentar endpoint alternativo
+        const { response: chatflowsResponse } = await makeFlowiseRequest('/api/v1/chatflows', { method: 'GET' });
+        if (chatflowsResponse.ok) {
+          console.log('✅ Servidor Flowise está respondendo (endpoint de chatflows)');
+          serverHealthCheck = true;
+        } else {
+          throw new Error('Servidor Flowise não está respondendo corretamente');
+        }
+      }
+    } catch (healthError) {
+      console.error('❌ Falha na verificação de saúde do servidor:', healthError);
+      
+      // IMPORTANTE: Não falhar imediatamente. O servidor pode estar com problemas no endpoint de saúde
+      // mas ainda funcionando para criação/atualização de workflows. Vamos tentar prosseguir.
+      console.log('🔄 Servidor com problemas de saúde, mas tentando prosseguir com exportação...');
+      serverHealthCheck = false; // Indica que a verificação de saúde falhou, mas vamos tentar anyway
+    }
+    
+    // Prosseguir com a verificação de workflows existentes (se o servidor está saudável) ou tentar criar diretamente
+    if (serverHealthCheck) {
+      try {
+        // Obter a lista de todos os workflows para verificar se já existe um com o mesmo nome
+        console.log('🔍 Verificando workflows existentes...');
+        const { response: listResponse, data: listData } = await makeFlowiseRequest('/api/v1/chatflows', { method: 'GET' });
+        
+        if (listResponse.ok && Array.isArray(listData)) {
+          console.log(`📋 Encontrados ${listData.length} workflows existentes`);
+          
+          // Procurar por workflow com o mesmo nome ou ID
+          const existingWorkflow = listData.find(wf => 
+            wf.id === canvasId || 
+            wf.name === finalExportPayload.name ||
+            (wf.chatflowId && wf.chatflowId === canvasId)
+          );
+          
+          if (existingWorkflow) {
+            workflowExists = true;
+            existingWorkflowId = existingWorkflow.id;
+            console.log('✅ Workflow existente encontrado:', {
+              id: existingWorkflow.id,
+              name: existingWorkflow.name,
+              type: existingWorkflow.type
+            });
+          } else {
+            console.log('📝 Nenhum workflow existente encontrado, será criado um novo');
+            createInstead = true;
+          }
+        } else {
+          console.warn('❌ Não foi possível obter lista de workflows, tentando criar:', {
+            status: listResponse.status,
+            statusText: listResponse.statusText,
+            data: listData
+          });
+          createInstead = true;
+        }
+      } catch (checkError) {
+        console.warn('Erro ao verificar existência do workflow, tentando criar:', checkError);
         createInstead = true;
       }
-    } catch (checkError) {
-      console.warn('Erro ao verificar existência do workflow, tentando criar:', checkError);
+    } else {
+      // Se a verificação de saúde falhou, tentar criar diretamente sem verificar existência
+      console.log('🔄 Verificação de saúde falhou, tentando criar workflow diretamente...');
       createInstead = true;
     }
 
     let finalResult = null;
     let actionTaken = '';
 
-    if (!createInstead) {
-      // Tentar atualizar o workflow existente
+    if (!createInstead && workflowExists && existingWorkflowId) {
+      // Tentar atualizar o workflow existente usando o ID correto
       try {
         const updateStartTime = Date.now();
-        const { response: updateResponse, data: updateData } = await makeFlowiseRequest(`/api/v1/chatflows/${canvasId}`, {
+        const { response: updateResponse, data: updateData } = await makeFlowiseRequest(`/api/v1/chatflows/${existingWorkflowId}`, {
           method: 'PUT',
           body: JSON.stringify(finalExportPayload)
         });
@@ -1000,20 +1557,17 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
           status: updateResponse.status,
           statusText: updateResponse.statusText,
           duration: updateDuration,
-          dataSize: JSON.stringify(updateData).length
+          dataSize: JSON.stringify(updateData).length,
+          responseData: updateData
         });
 
         if (updateResponse.ok) {
           finalResult = { response: updateResponse, data: updateData, duration: updateDuration };
           actionTaken = 'updated';
         } else {
-          // Se a atualização falhar com "not found", tentar criar
-          if (updateData?.message?.includes('not found') || updateResponse.status === 404) {
-            console.log('❌ Workflow não encontrado durante atualização, tentando criar...');
-            createInstead = true;
-          } else {
-            throw new Error(`Falha na atualização: HTTP ${updateResponse.status}: ${updateResponse.statusText}`);
-          }
+          // Se a atualização falhar, tentar criar um novo
+          console.log('❌ Falha na atualização, tentando criar novo workflow...');
+          createInstead = true;
         }
       } catch (updateError) {
         console.warn('Erro na atualização, tentando criar novo:', updateError);
@@ -1026,6 +1580,16 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
       try {
         // Para criação, não usar o canvasId original, gerar um novo ID
         const createStartTime = Date.now();
+        
+        // Log detalhado do payload sendo enviado
+        console.log('📤 Payload para criação:', {
+          url: '/api/v1/chatflows',
+          method: 'POST',
+          payload: finalExportPayload,
+          payloadSize: JSON.stringify(finalExportPayload).length,
+          payloadKeys: Object.keys(finalExportPayload)
+        });
+        
         const { response: createResponse, data: createData } = await makeFlowiseRequest('/api/v1/chatflows', {
           method: 'POST',
           body: JSON.stringify(finalExportPayload)
@@ -1037,7 +1601,9 @@ async function handleExportWorkflow(config: any, canvasId: string, workflowData:
           status: createResponse.status,
           statusText: createResponse.statusText,
           duration: createDuration,
-          dataSize: JSON.stringify(createData).length
+          dataSize: JSON.stringify(createData).length,
+          responseData: createData,
+          responseHeaders: Object.fromEntries(createResponse.headers.entries())
         });
 
         if (createResponse.ok) {

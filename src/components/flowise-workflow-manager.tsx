@@ -747,7 +747,7 @@ export default function FlowiseWorkflowManager() {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         {getTypeIcon(workflow.type)}
-                        <h3 className="font-semibold text-lg">{workflow.name}</h3>
+                        <h3 className="font-semibold text-lg">{workflow.name || `Workflow ${workflow.id}`}</h3>
                         <Badge variant="outline" className="flex items-center gap-1">
                           {getTypeLabel(workflow.type)}
                         </Badge>

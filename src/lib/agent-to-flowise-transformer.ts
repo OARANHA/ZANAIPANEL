@@ -151,31 +151,6 @@ async function detectAgentTemplate(agent: AgentData): Promise<string> {
     return 'chat';
   }
   
-  // Tentar usar API Z para decisão inteligente (disponível apenas no backend)
-  try {
-    // Verificar se estamos no ambiente de backend
-    if (typeof window === 'undefined') {
-      const { zaiService } = await import('./z-ai-service');
-      
-      const templateSelection = await zaiService.selectOptimalTemplate({
-        name: agent.name,
-        description: agent.description || '',
-        type: agent.type,
-        config: agent.config,
-        knowledge: agent.knowledge,
-        capabilities: agent.capabilities || []
-      });
-      
-      console.log('🤖 API Z recomendou template:', templateSelection);
-      console.log('📊 Confiança:', templateSelection.confidence);
-      console.log('🧠 Razonamento:', templateSelection.reasoning);
-      
-      return templateSelection.template;
-    }
-  } catch (error) {
-    console.log('⚠️ Não foi possível usar API Z, usando detecção manual:', error.message);
-  }
-  
   // Padrão: usar template baseado no tipo original
   let templateType = 'chat'; // Template padrão
   switch (agent.type) {
@@ -203,30 +178,43 @@ export async function transformAgentToFlowiseWorkflow(agent: AgentData): Promise
   console.log('🔄 Transformando agente para Flowise workflow:', agent.name);
 
   // Detectar o tipo de template adequado
+  console.log('🔍 Iniciando detecção de template...');
   const templateType = await detectAgentTemplate(agent);
   console.log('📋 Template detectado:', templateType);
   
   // Extrair configuração do agente
+  console.log('📝 Extraindo configuração do agente...');
   const agentConfig = parseAgentConfig(agent.config);
+  console.log('✅ Configuração extraída:', Object.keys(agentConfig || {}));
   
   // Gerar nós e conexões baseado no template detectado
+  console.log('🔗 Gerando nós e conexões...');
   const { nodes, edges } = generateTemplateNodesAndEdges(agent, agentConfig, templateType);
+  console.log('✅ Nós e conexões gerados:', { nodesCount: nodes.length, edgesCount: edges.length });
   
   // Gerar flowData no formato esperado pelo Flowise
+  console.log('📊 Gerando flowData...');
   const flowData = {
     nodes,
     edges,
     viewport: { x: 0, y: 0, zoom: 1 }
   };
+  console.log('✅ flowData gerado');
 
   // Gerar chatbotConfig baseado nas configurações do agente
+  console.log('💬 Gerando chatbotConfig...');
   const chatbotConfig = generateChatbotConfig(agent, agentConfig, templateType);
+  console.log('✅ chatbotConfig gerado');
   
   // Gerar apiConfig baseado nas configurações do agente
+  console.log('🔌 Gerando apiConfig...');
   const apiConfig = generateApiConfig(agent, agentConfig, templateType);
+  console.log('✅ apiConfig gerado');
 
   // Determinar o tipo do workflow no Flowise baseado no template
+  console.log('🏷️ Determinando tipo do workflow...');
   const workflowType = getWorkflowType(templateType);
+  console.log('✅ Tipo do workflow determinado:', workflowType);
 
   const transformed: FlowiseWorkflowData = {
     id: agent.id,

@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
         return await updateWorkflow(data);
       case 'delete_workflow':
         return await deleteWorkflow(data);
+      case 'debug_workflow':
+        return await debugWorkflow(data);
       default:
         return NextResponse.json({ error: 'Ação não suportada' }, { status: 400 });
     }
@@ -87,43 +89,82 @@ async function registerWorkflow(workflowData: FlowiseWorkflow) {
     // Gerar descrição automática
     const description = generateDescription(workflowData, complexity, capabilities);
     
-    // Salvar no banco de dados
-    const savedWorkflow = await db.flowiseWorkflow.create({
-      data: {
-        flowiseId: workflowData.id,
-        name: workflowData.name,
-        description: description,
-        type: workflowData.type,
-        flowData: workflowData.flowData,
-        deployed: workflowData.deployed || false,
-        isPublic: workflowData.isPublic || false,
-        category: workflowData.category || 'general',
-        workspaceId: workflowData.workspaceId,
-        complexityScore: complexity.complexityScore,
-        nodeCount: complexity.nodeCount,
-        edgeCount: complexity.edgeCount,
-        maxDepth: complexity.maxDepth,
-        capabilities: JSON.stringify(capabilities || {}),
-        nodes: JSON.stringify(nodes || []),
-        connections: JSON.stringify(connections || []),
-        criticalPath: JSON.stringify(complexity.criticalPath || []),
-        bottlenecks: JSON.stringify(complexity.bottlenecks || []),
-        optimizationSuggestions: JSON.stringify(complexity.optimizationSuggestions || []),
-        lastSyncAt: new Date(),
-        createdAt: workflowData.createdDate,
-        updatedAt: workflowData.updatedDate
-      }
+    // Verificar se o workflow já existe
+    const existingWorkflow = await db.flowiseWorkflow.findUnique({
+      where: { flowiseId: workflowData.id }
     });
+
+    let savedWorkflow;
+    let action = 'WORKFLOW_REGISTERED';
+    
+    if (existingWorkflow) {
+      // Atualizar workflow existente
+      savedWorkflow = await db.flowiseWorkflow.update({
+        where: { flowiseId: workflowData.id },
+        data: {
+          name: workflowData.name,
+          description: description,
+          type: workflowData.type,
+          flowData: workflowData.flowData,
+          deployed: workflowData.deployed || false,
+          isPublic: workflowData.isPublic || false,
+          category: workflowData.category || 'general',
+          workspaceId: workflowData.workspaceId,
+          complexityScore: complexity.complexityScore,
+          nodeCount: complexity.nodeCount,
+          edgeCount: complexity.edgeCount,
+          maxDepth: complexity.maxDepth,
+          capabilities: JSON.stringify(capabilities || {}),
+          nodes: JSON.stringify(nodes || []),
+          connections: JSON.stringify(connections || []),
+          criticalPath: JSON.stringify(complexity.criticalPath || []),
+          bottlenecks: JSON.stringify(complexity.bottlenecks || []),
+          optimizationSuggestions: JSON.stringify(complexity.optimizationSuggestions || []),
+          lastSyncAt: new Date(),
+          updatedAt: workflowData.updatedDate
+        }
+      });
+      action = 'WORKFLOW_UPDATED';
+    } else {
+      // Criar novo workflow
+      savedWorkflow = await db.flowiseWorkflow.create({
+        data: {
+          flowiseId: workflowData.id,
+          name: workflowData.name,
+          description: description,
+          type: workflowData.type,
+          flowData: workflowData.flowData,
+          deployed: workflowData.deployed || false,
+          isPublic: workflowData.isPublic || false,
+          category: workflowData.category || 'general',
+          workspaceId: workflowData.workspaceId,
+          complexityScore: complexity.complexityScore,
+          nodeCount: complexity.nodeCount,
+          edgeCount: complexity.edgeCount,
+          maxDepth: complexity.maxDepth,
+          capabilities: JSON.stringify(capabilities || {}),
+          nodes: JSON.stringify(nodes || []),
+          connections: JSON.stringify(connections || []),
+          criticalPath: JSON.stringify(complexity.criticalPath || []),
+          bottlenecks: JSON.stringify(complexity.bottlenecks || []),
+          optimizationSuggestions: JSON.stringify(complexity.optimizationSuggestions || []),
+          lastSyncAt: new Date(),
+          createdAt: workflowData.createdDate,
+          updatedAt: workflowData.updatedDate
+        }
+      });
+    }
 
     // Registrar evento de sincronização
     await db.syncLog.create({
       data: {
-        action: 'WORKFLOW_REGISTERED',
+        action: action,
         flowiseId: workflowData.id,
         details: JSON.stringify({
           name: workflowData.name,
           type: workflowData.type,
-          complexity: complexity.complexityScore
+          complexity: complexity.complexityScore,
+          wasExisting: !!existingWorkflow
         }),
         status: 'SUCCESS'
       }
@@ -145,9 +186,12 @@ async function registerWorkflow(workflowData: FlowiseWorkflow) {
     // Registrar erro
     await db.syncLog.create({
       data: {
-        action: 'WORKFLOW_REGISTERED',
+        action: action || 'WORKFLOW_REGISTERED',
         flowiseId: workflowData.id,
-        details: JSON.stringify({ error: error.message }),
+        details: JSON.stringify({ 
+          error: error.message,
+          wasExisting: !!existingWorkflow 
+        }),
         status: 'ERROR'
       }
     });
@@ -269,80 +313,10 @@ async function getWorkflows({ filters = {}, page = 1, limit = 20, includeAgents 
     
     // Se solicitado, buscar também agentes para exportação
     if (includeAgents && (!filters.type || filters.type === 'ALL')) {
-      try {
-        const agentWhere: any = {};
-        if (filters.workspaceId) agentWhere.workspaceId = filters.workspaceId;
-        
-        agents = await db.agent.findMany({
-          where: agentWhere,
-          include: {
-            workspace: true
-          },
-          orderBy: { updatedAt: 'desc' },
-          take: limit // Limitar agentes para não sobrecarregar
-        });
-        
-        console.log(`📋 Encontrados ${agents.length} agentes para transformação`);
-        
-        // Transformar agentes para formato FlowiseWorkflow
-        const transformedAgents = agents.map(agent => {
-          try {
-            // Preparar dados do agente no formato esperado pelo transformador
-            const agentData = {
-              id: agent.id,
-              name: agent.name,
-              slug: agent.slug,
-              description: agent.description,
-              type: agent.type,
-              config: agent.config,
-              knowledge: agent.knowledge,
-              workspaceId: agent.workspaceId,
-              // Tentar extrair roleDefinition e customInstructions do config se disponível
-              ...(extractAgentAdditionalFields(agent.config))
-            };
-            
-            const transformed = transformAgentToFlowiseWorkflow(agentData);
-            
-            // Adicionar metadados para identificar que é um agente transformado
-            return {
-              ...transformed,
-              id: `agent_${agent.id}`, // Prefixo para evitar conflitos de ID
-              flowiseId: `agent_${agent.slug}`, // Usar slug como flowiseId
-              isFromAgent: true, // Marcar como originado de agente
-              originalAgentId: agent.id,
-              originalAgentType: agent.type,
-              complexityScore: 50, // Valor padrão para agentes transformados
-              nodeCount: 3, // Valor padrão (input, processamento, output)
-              edgeCount: 2, // Valor padrão
-              maxDepth: 1, // Valor padrão
-              capabilities: JSON.stringify({
-                canHandleFileUpload: false,
-                hasStreaming: true,
-                supportsMultiLanguage: false,
-                hasMemory: true,
-                usesExternalAPIs: false,
-                hasAnalytics: false,
-                supportsParallelProcessing: false,
-                hasErrorHandling: true
-              }),
-              nodes: JSON.stringify([]), // Será preenchido durante exportação
-              connections: JSON.stringify([]), // Será preenchido durante exportação
-              lastSyncAt: null, // Ainda não sincronizado
-              createdAt: agent.createdAt,
-              updatedAt: agent.updatedAt
-            };
-          } catch (transformError) {
-            console.error(`❌ Erro ao transformar agente ${agent.name}:`, transformError);
-            return null;
-          }
-        }).filter(Boolean); // Remover nulos
-        
-        console.log(`✅ ${transformedAgents.length} agentes transformados com sucesso`);
-        allWorkflows = [...transformedAgents, ...allWorkflows];
-        
-      } catch (agentError) {
-        console.error('❌ Erro ao buscar agentes:', agentError);
-      }
+      console.log('⚠️ Transformação de agentes temporariamente desabilitada');
+      // TEMPORÁRIO: Desabilitar completamente a transformação de agentes
+      // para evitar travamento do sistema
+      console.log('📋 Transformação de agentes desabilitada temporariamente para estabilidade do sistema');
     }
 
     // Calcular paginação considerando workflows transformados
@@ -927,4 +901,95 @@ async function updateExistingWorkflow(existing: any, workflow: FlowiseWorkflow) 
       updatedAt: workflow.updatedDate
     }
   });
+}
+
+// Função de debug para analisar workflow específico
+async function debugWorkflow({ flowiseId }: { flowiseId: string }) {
+  try {
+    console.log('🔍 Debugando workflow:', flowiseId);
+    
+    // Buscar workflow no banco de dados
+    const workflow = await db.flowiseWorkflow.findUnique({
+      where: { flowiseId }
+    });
+
+    if (!workflow) {
+      return NextResponse.json({
+        success: false,
+        error: 'Workflow não encontrado'
+      }, { status: 404 });
+    }
+
+    // Analisar os dados do workflow
+    let flowDataParsed = null;
+    let nodes = [];
+    let connections = [];
+    let capabilities = {};
+
+    try {
+      flowDataParsed = JSON.parse(workflow.flowData);
+      nodes = flowDataParsed.nodes || [];
+      connections = flowDataParsed.edges || [];
+    } catch (e) {
+      console.warn('Erro ao fazer parse do flowData:', e);
+    }
+
+    try {
+      capabilities = workflow.capabilities ? JSON.parse(workflow.capabilities) : {};
+    } catch (e) {
+      console.warn('Erro ao fazer parse das capabilities:', e);
+    }
+
+    const debugInfo = {
+      workflow: {
+        id: workflow.id,
+        flowiseId: workflow.flowiseId,
+        name: workflow.name,
+        type: workflow.type,
+        category: workflow.category,
+        deployed: workflow.deployed,
+        isPublic: workflow.isPublic,
+        complexityScore: workflow.complexityScore,
+        nodeCount: workflow.nodeCount,
+        edgeCount: workflow.edgeCount,
+        maxDepth: workflow.maxDepth,
+        lastSyncAt: workflow.lastSyncAt,
+        createdAt: workflow.createdAt,
+        updatedAt: workflow.updatedAt
+      },
+      flowData: {
+        parsed: !!flowDataParsed,
+        nodesCount: nodes.length,
+        connectionsCount: connections.length,
+        nodesSample: nodes.slice(0, 2).map(n => ({ id: n.id, type: n.type, position: n.position })),
+        connectionsSample: connections.slice(0, 2).map(c => ({ id: c.id, source: c.source, target: c.target }))
+      },
+      capabilities: capabilities,
+      rawFields: {
+        flowDataLength: workflow.flowData.length,
+        nodesLength: workflow.nodes?.length || 0,
+        connectionsLength: workflow.connections?.length || 0,
+        capabilitiesLength: workflow.capabilities?.length || 0
+      }
+    };
+
+    console.log('✅ Debug info gerado:', {
+      name: debugInfo.workflow.name,
+      nodesCount: debugInfo.flowData.nodesCount,
+      connectionsCount: debugInfo.flowData.connectionsCount,
+      hasFlowData: debugInfo.flowData.parsed
+    });
+
+    return NextResponse.json({
+      success: true,
+      debug: debugInfo
+    });
+
+  } catch (error) {
+    console.error('Erro no debug do workflow:', error);
+    return NextResponse.json(
+      { error: 'Falha no debug do workflow', details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    );
+  }
 }
