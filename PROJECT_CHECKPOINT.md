@@ -1,368 +1,163 @@
-# Flowise AgentFlow V2 Integration Project
+# Flowise 数据处理架构与集成方案
 
-## Current Status
-**Date**: 2025-06-18  
-**Phase**: Production Ready  
-**Progress**: All major components implemented and tested, critical issues resolved
+## 核心架构分析
 
-## Project Overview
-This project aims to integrate Flowise AgentFlow V2 Generator into the existing Zanai platform to enable AI-driven workflow generation functionality.
+Flowise 拥有两个主要的数据管理系统：
 
-## Current Architecture
-- **Framework**: Next.js 15 with App Router
-- **Base Platform**: Zanai - AI agent management platform
-- **Existing Integration**: Flowise as underlying workflow engine
-- **Target Module**: `/admin/compositions` for agent combination management
+### 1. Dataset 系统
+- **用途**：存储结构化数据用于训练和微调
+- **结构**：Dataset（主表）+ DatasetRow（输入输出对）
+- **数据格式**：input（问题/命令）+ output（预期答案）
+- **API 端点**：`/api/v1/dataset/*`
 
-## Analysis Findings
+### 2. DocumentStore 系统
+- **用途**：存储文档用于 RAG（检索增强生成）
+- **结构**：DocumentStore（主表）+ DocumentStoreFileChunk（文档分块）
+- **支持格式**：PDF、DOCX、TXT、CSV、JSON
+- **处理流程**：上传 → 分块 → 嵌入 → 向量存储
+- **API 端点**：`/api/v1/documentstore/*`
 
-### Existing Compositions Module Structure
-**Location**: `/src/app/admin/compositions/`
+## 数据输入流程
 
-**Frontend Components**:
-- Main page with composition management interface
-- Statistics dashboard (total compositions, active compositions, executions, available agents)
-- Create composition modal with agent selection
-- Search, filter, and sort functionality
-- Execution and archive capabilities
+### Dataset 输入：
+1. **CSV 上传** - 支持批量导入
+2. **REST API** - 单条记录添加
+3. **格式要求**：第一列为输入，第二列为输出
 
-**Backend APIs**:
-- `GET /api/compositions` - List all compositions
-- `POST /api/compositions` - Create new composition
-- `POST /api/compositions/execute` - Execute composition
-- `PATCH /api/compositions/[id]/archive` - Toggle composition status
+### DocumentStore 输入：
+1. **多格式文件上传**
+2. **自动分块处理**
+3. **嵌入和向量存储配置**
+4. **预览和处理分离**
 
-**Database Schema**:
-- `Composition` model with relations to Workspace and Agents
-- `Execution` model for tracking composition runs
-- `FlowiseWorkflow` and `FlowiseExecution` models for Flowise integration
-- Support for complex workflow structures and metrics
+## 智能代理集成方案
 
-### Key Integration Points
-1. **Agent Selection**: Existing system allows selecting multiple agents for compositions
-2. **Workspace Context**: Compositions are workspace-scoped
-3. **Execution Framework**: Already supports multi-agent execution with timeout handling
-4. **Flowise Integration**: Database schema supports Flowise workflow synchronization
-5. **Metrics Collection**: System already tracks execution metrics and performance
+### 三层代理架构：
 
-### Current Limitations
-- No AI-powered workflow generation
-- Manual agent selection only
-- No natural language to workflow conversion
-- Limited workflow visualization capabilities
+#### 1. 数据收集代理 (Data Collector Agent)
+- 从多个源收集数据（API、数据库、文件）
+- 格式验证和元数据提取
+- 发送到处理层
 
-## Implementation Plan
+#### 2. 数据处理代理 (Data Processing Agent)
+- 清洗和标准化数据
+- 应用业务规则转换
+- 生成嵌入向量（如需要）
+- 格式化为 Flowise 兼容格式
 
-### Phase 1: Analysis & Design (Completed)
-- [x] Create TODO list and project documentation
-- [x] Analyze existing compositions module structure
-- [x] Design AI workflow generator UI component
+#### 3. Flowise 集成代理 (Flowise Integration Agent)
+- 与 Flowise API 通信
+- 管理认证和授权
+- 监控处理状态
+- 错误处理和重试机制
 
-### Phase 2: Backend Development (Completed)
-- [x] Implement `/api/admin/compositions/generate-ai-workflow` endpoint
-- [x] Integrate Flowise AgentFlow V2 Generator
-- [x] Create custom converter for workflow transformation
+## 客户端价值
 
-### Phase 3: Frontend Development (Completed)
-- [x] Build AI workflow generator modal interface
-- [x] Implement workflow preview functionality
-- [x] Add save generated workflow as composition feature
+### 简化操作：
+- 统一接口处理多种数据格式
+- 自动化复杂处理流程
+- 实时监控和状态反馈
+- 质量保证和错误恢复
 
-### Phase 4: Testing & Refinement (Completed)
-- [x] Test complete AI workflow generation flow
-- [x] User experience optimization
-- [x] Performance tuning
-- [x] Fix critical authentication and API endpoint issues
-- [x] Resolve AI workflow generation errors
+### 技术优势：
+- 解耦架构，各代理独立运行
+- 高弹性和容错能力
+- 可扩展性，易于添加新数据源
+- 完整的处理可见性
 
-### Phase 5: Production Deployment (Completed)
-- [x] Fix missing API endpoints for AI workflow generation
-- [x] Resolve authentication middleware issues
-- [x] Update frontend API calls to use correct paths
-- [x] Implement proper cookie-based authentication
-- [x] Deploy to production repository
+## 实施路径
 
-## Key Features to Implement
-1. **Natural Language Input**: Users describe workflows in plain text
-2. **AI Generation**: Automatic workflow node and edge creation
-3. **Preview System**: Visual preview before saving
-4. **Template Support**: Pre-configured workflow templates
-5. **Seamless Integration**: Works with existing composition system
+1. **客户端提供数据** → 2. **收集代理接收** → 3. **处理代理清洗** → 4. **集成代理发送至 Flowise** → 5. **状态反馈和报告**
 
-## Technical Considerations
-- Use existing shadcn/ui components for consistency
-- Maintain responsive design principles
-- Ensure proper error handling and loading states
-- Implement proper TypeScript typing throughout
+该方案使智能代理组合成为 Flowise 的智能编排层，既简化了客户端的数据输入复杂性，又保留了 Flowise 的全部 AI 处理能力。
 
-## Next Steps
-1. Complete Flowise AgentFlow V2 Generator integration
-2. Create custom converter for workflow transformation
-3. Implement workflow preview functionality
-4. Test complete AI workflow generation flow
+## 数据库状态与连接问题解决
 
-## Technical Implementation Progress
+### 当前数据库配置
+- **数据库类型**: SQLite
+- **数据库文件**: `./db/custom.db`
+- **ORM**: Prisma Client v6.14.0
+- **环境变量**: `DATABASE_URL="file:./db/custom.db"`
 
-### Completed Components
+### 数据库表结构
+项目包含完整的数据库表结构，主要表包括：
 
-#### 1. AI Workflow Generator UI Component (`/src/components/admin/AIWorkflowGenerator.tsx`)
-- **Features**:
-  - Modal interface with natural language input
-  - Workflow type selection (sequential, parallel, conditional)
-  - Complexity level selection (simple, medium, complex)
-  - Real-time generation progress
-  - Multi-tab preview (visualization, agents, structure)
-  - Integration with existing composition system
+#### 核心业务表
+- **users** - 用户管理
+- **Workspace** - 工作空间管理
+- **Agent** - 智能代理
+- **Composition** - 代理组合
+- **Client** - 客户管理
+- **Company** - 公司管理
 
-- **UI Elements**:
-  - Modern gradient buttons with icons
-  - Progress indicators during generation
-  - Tabbed interface for workflow preview
-  - Agent selection display with status badges
-  - Error handling and user feedback
+#### Flowise 集成表
+- **flowise_workflows** - Flowise 工作流
+- **flowise_executions** - Flowise 执行记录
+- **sync_logs** - 同步日志
 
-#### 2. Backend API Endpoint (`/src/app/admin/api/compositions/generate-ai-workflow/route.ts`)
-- **Features**:
-  - Integration with ZAI SDK for AI generation
-  - Intelligent prompt engineering for workflow creation
-  - Fallback mechanism for AI failures
-  - Workflow validation and enhancement
-  - Support for different complexity levels
+#### 系统支持表
+- **audit_logs** - 审计日志
+- **projects** - 项目管理
+- **tasks** - 任务管理
+- **reports** - 报告系统
 
-- **Technical Details**:
-  - Uses z-ai-web-dev-sdk for AI integration
-  - Implements robust error handling
-  - Creates fallback workflows when AI fails
-  - Validates agent availability and workflow structure
-  - Returns structured workflow data
+### 连接问题诊断与解决
 
-### Current Work: Critical Issues Resolution & Production Deployment
-**Status**: All Critical Issues Resolved
-**Status**: Production Ready and Deployed
+#### 问题现象
+API 路由中出现数据库连接错误：
+```
+TypeError: Cannot read properties of undefined (reading 'findMany')
+```
 
-## Recent Critical Fixes (2025-06-18)
+#### 解决过程
+1. **验证数据库文件存在** ✅
+   - 确认 `db/custom.db` 文件存在
+   - 数据库包含 22 个表
 
-### 🔧 Major Issues Resolved
+2. **验证 Prisma 配置** ✅
+   - Prisma Client 正确安装 (v6.14.0)
+   - Schema 文件验证通过
+   - 环境变量正确配置
 
-#### 1. AI Workflow Generation API Endpoint Missing
-**Problem**: Users encountered "Erro ao gerar workflow. Tente novamente." when clicking AI workflow generation button
-**Root Cause**: Missing API endpoints at `/admin/api/compositions/generate-ai-workflow` and `/admin/api/compositions/save-flowise-workflow`
-**Solution**: 
-- Created missing API endpoints with proper error handling
-- Implemented AI-powered workflow generation using ZAI SDK
-- Added fallback mechanisms for AI failures
-- Integrated with existing authentication system
+3. **数据库连接测试** ✅
+   - 成功连接到数据库
+   - 可以执行查询操作
+   - 确认有 6 个用户和 6 个工作空间的测试数据
 
-#### 2. Authentication Middleware Issues
-**Problem**: Authentication was too restrictive, only allowing SUPER_ADMIN role
-**Root Cause**: Middleware only permitted `SUPER_ADMIN` role for admin routes
-**Solution**:
-- Updated middleware to allow both `SUPER_ADMIN` and `admin` roles
-- Enhanced login page to set proper authentication cookies
-- Fixed cookie-based authentication for middleware compatibility
+4. **Prisma Client 生成** ✅
+   - 重新生成 Prisma Client
+   - 验证模块导入路径正确
 
-#### 3. API Path Mismatch
-**Problem**: Frontend was calling incorrect API paths
-**Root Cause**: Frontend using `/admin/api/` but some endpoints created at `/api/admin/`
-**Solution**:
-- Standardized all admin APIs to use `/admin/api/` prefix
-- Updated frontend API calls to use correct paths
-- Ensured consistency across all admin functionality
+### 当前状态
+- ✅ 数据库连接正常
+- ✅ 表结构完整
+- ✅ 测试数据存在
+- ✅ Prisma Client 配置正确
+- ⚠️ 部分API路由仍存在连接问题（需要进一步调试模块导入）
 
-#### 4. Login System Enhancement
-**Problem**: Login system wasn't setting proper cookies for middleware authentication
-**Root Cause**: Missing cookie setup in login process
-**Solution**:
-- Enhanced login page to set authentication cookies
-- Added proper cookie attributes for security
-- Updated email placeholder to reflect correct admin credentials
+### 下一步行动
+1. 检查 TypeScript 编译配置
+2. 验证 Next.js 路由的模块解析
+3. 测试所有 API 端点的数据库连接
+4. 确保生产环境的数据库配置
 
-#### 5. Composition Save Error
-**Problem**: Users encountered "Erro ao salvar composição. Tente novamente." when saving AI-generated workflows
-**Root Cause**: AIWorkflowGenerator was calling `/api/compositions` instead of `/admin/api/compositions`
-**Solution**:
-- Updated API call in AIWorkflowGenerator component to use correct admin API path
-- Ensured consistency with established admin API pattern
-- Fixed path mismatch causing save failures
+## 技术栈确认
 
-#### 6. AI Workflow Generator Enhancement
-**Problem**: Users reported that generated workflow cards lacked sufficient options and functionality
-**Root Cause**: AIWorkflowGenerator had limited interactive features and basic workflow display
-**Solution**:
-- Added functional execute and edit buttons to workflow preview
-- Implemented comprehensive workflow structure tab with detailed information
-- Added quick action buttons: Edit Workflow, Copy JSON, Export JSON, Regenerate
-- Enhanced nodes and connections display with better styling and information
-- Included workflow configuration summary and technical details
-- Added technical summary with key metrics and status indicators
-- Improved user feedback and interaction options throughout the interface
+### 后端技术栈
+- **框架**: Next.js 15 (App Router)
+- **语言**: TypeScript 5
+- **数据库**: SQLite + Prisma ORM
+- **认证**: NextAuth.js v4
+- **实时通信**: Socket.IO
 
-#### 7. Composition Cards Enhancement
-**Problem**: Composition cards lacked sufficient actions and functionality beyond basic execute and archive
-**Root Cause**: Limited interactive features and poor user experience for managing compositions
-**Solution**:
-- Added comprehensive action buttons to all composition cards
-- Implemented dropdown menu with advanced options (Export, Share, Statistics)
-- Added AI-generated workflow detection with special visual indicators
-- Included metadata display showing key metrics (agents, executions, AI status)
-- Enhanced visual design with hover effects and interactive elements
-- Added functional actions: view details, edit composition, export JSON, share, view statistics
-- Improved user experience with better organization and visual feedback
-- Added special indicators for AI-generated workflows with distinctive styling
+### 前端技术栈
+- **样式**: Tailwind CSS 4
+- **组件库**: shadcn/ui
+- **状态管理**: Zustand + TanStack Query
+- **图标**: Lucide Icons
 
-#### 8. Advanced Composition Management
-**Problem**: Users needed more control and options for managing their compositions
-**Root Cause**: Basic interface lacked advanced composition management features
-**Solution**:
-- Implemented multi-level action system with quick actions and dropdown menus
-- Added composition export functionality in JSON format
-- Implemented sharing capabilities with link copying
-- Added detailed statistics viewing for composition performance
-- Enhanced metadata display with icons and color coding
-- Improved visual distinction between AI-generated and manual compositions
-- Added comprehensive composition lifecycle management options
-
-### 🎯 Technical Improvements
-
-#### API Endpoint Structure
-- **Generate AI Workflow**: `/admin/api/compositions/generate-ai-workflow`
-  - POST endpoint with AI generation capabilities
-  - Robust error handling and fallback mechanisms
-  - Integration with ZAI SDK for intelligent workflow creation
-
-- **Save Flowise Workflow**: `/admin/api/compositions/save-flowise-workflow`
-  - POST endpoint for Flowise workflow conversion
-  - Dual-save functionality (Composition + Flowise)
-  - Fallback mode for conversion failures
-
-#### Authentication System
-- **Middleware Enhancement**: Now supports both SUPER_ADMIN and admin roles
-- **Cookie-Based Auth**: Proper cookie setup for session management
-- **Security**: Enhanced cookie attributes and validation
-
-#### Frontend Integration
-- **API Path Standardization**: All calls now use `/admin/api/` prefix
-- **Error Handling**: Comprehensive error display and user feedback
-- **User Experience**: Improved loading states and progress indicators
-
-## Implementation Summary
-
-### ✅ Completed Components
-
-#### 1. AI Workflow Generator UI Component (`/src/components/admin/AIWorkflowGenerator.tsx`)
-- **Features**:
-  - Modal interface with natural language input
-  - Workflow type selection (sequential, parallel, conditional)
-  - Complexity level selection (simple, medium, complex)
-  - Real-time generation progress with visual feedback
-  - Multi-tab preview (visualization, agents, structure)
-  - Integration with existing composition system
-  - Enhanced save functionality with Flowise integration
-
-- **UI Elements**:
-  - Modern gradient buttons with icons
-  - Progress indicators during generation
-  - Tabbed interface for workflow preview
-  - Agent selection display with status badges
-  - Comprehensive error handling and user feedback
-
-#### 2. Backend API Endpoint (`/src/app/admin/api/compositions/generate-ai-workflow/route.ts`)
-- **Features**:
-  - Integration with ZAI SDK for AI generation
-  - Intelligent prompt engineering for workflow creation
-  - Robust fallback mechanism for AI failures
-  - Workflow validation and enhancement
-  - Support for different complexity levels
-  - Comprehensive error handling
-
-- **Technical Details**:
-  - Uses z-ai-web-dev-sdk for AI integration
-  - Implements intelligent fallback workflows
-  - Validates agent availability and workflow structure
-  - Returns structured workflow data with metadata
-
-#### 3. Flowise Converter (`/src/lib/flowise-converter.ts`)
-- **Features**:
-  - Complete conversion from generated workflow to Flowise format
-  - Support for multiple node types (Start, End, LLM, Tool, Custom, Condition, Parallel)
-  - Automatic positioning and connection handling
-  - Complexity scoring and analysis
-  - Database integration with FlowiseWorkflow model
-
-- **Technical Details**:
-  - Type-safe conversion with comprehensive mappings
-  - Automatic node positioning based on type
-  - Support for various node configurations
-  - Integration with existing Prisma schema
-
-#### 4. Workflow Preview Component (`/src/components/admin/WorkflowPreview.tsx`)
-- **Features**:
-  - Comprehensive workflow visualization
-  - Statistics dashboard (nodes, edges, agents, complexity)
-  - Sequential flow visualization with icons
-  - Agent status display
-  - Execution readiness indicators
-
-- **UI Elements**:
-  - Modern card-based layout
-  - Icon-based node representation
-  - Status badges and indicators
-  - Responsive design for all screen sizes
-
-#### 5. Flowise Save Integration (`/src/app/admin/api/compositions/save-flowise-workflow/route.ts`)
-- **Features**:
-  - Dual-save functionality (Composition + Flowise)
-  - Automatic workflow conversion
-  - Fallback mode for conversion failures
-  - Database synchronization
-  - Error handling with graceful degradation
-
-- **Technical Details**:
-  - Atomic operations for data consistency
-  - Fallback mechanisms for robustness
-  - Comprehensive error logging
-  - Integration with existing composition system
-
-### 🔧 Key Technical Achievements
-
-1. **Seamless Integration**: Successfully integrated with existing Zanai platform without breaking changes
-2. **AI-Powered Generation**: Implemented intelligent workflow generation using ZAI SDK
-3. **Robust Error Handling**: Multiple fallback mechanisms ensure system stability
-4. **Type Safety**: Comprehensive TypeScript typing throughout the implementation
-5. **User Experience**: Modern, responsive UI with excellent user feedback
-6. **Database Integration**: Proper integration with existing Prisma schema
-7. **Flowise Compatibility**: Full compatibility with Flowise AgentFlow V2 format
-
-### 🎯 User Experience Features
-
-1. **Natural Language Input**: Users can describe workflows in plain text
-2. **Visual Feedback**: Real-time progress indicators and loading states
-3. **Preview System**: Comprehensive preview before saving
-4. **Template Support**: Different workflow types and complexity levels
-5. **Seamless Integration**: Works with existing composition system
-6. **Error Recovery**: Graceful handling of AI and conversion failures
-
-### 📊 Performance Optimizations
-
-1. **Progressive Enhancement**: Basic functionality works even if AI fails
-2. **Efficient Rendering**: Optimized component structure for performance
-3. **Database Optimization**: Efficient queries and proper indexing
-4. **Memory Management**: Proper cleanup and state management
-5. **Network Optimization**: Minimal API calls and efficient data transfer
-
----
-*Last Updated: 2025-06-18*
-*Status: Production Ready - All Critical Issues Resolved*
-
-## Deployment Summary
-- **Repository**: https://github.com/OARANHA/ZANAIPANEL.git
-- **Latest Commit**: 253655f - Enhance composition cards with comprehensive actions and features
-- **Deployment Status**: Successfully deployed to production
-- **Known Issues**: None - all critical issues resolved
-
-## Next Steps
-1. **Monitor Production**: Monitor AI workflow generation usage and performance
-2. **User Feedback**: Collect user feedback on AI workflow generation experience
-3. **Performance Optimization**: Optimize AI response times based on usage patterns
-4. **Feature Enhancement**: Consider additional workflow types and AI capabilities
-5. **Documentation**: Update user documentation with new AI workflow generation features
+### 集成服务
+- **AI 服务**: Z.ai SDK
+- **外部集成**: Flowise API
+- **文件存储**: 本地文件系统
+- **缓存**: 内存缓存

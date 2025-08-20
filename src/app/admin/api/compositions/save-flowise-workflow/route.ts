@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { FlowiseConverter } from '@/lib/flowise-converter';
+import { createFlowiseClient, defaultFlowiseConfig } from '@/lib/flowise-client';
+import { db } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,48 +15,121 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert the generated workflow to Flowise format
-    const flowiseWorkflow = {
-      name: generatedWorkflow.name,
-      description: generatedWorkflow.description,
-      nodes: generatedWorkflow.nodes.map((node: any) => ({
-        id: node.id,
-        type: node.type,
-        name: node.name,
-        description: node.description,
-        config: node.config,
-        position: {
-          x: Math.random() * 400,
-          y: Math.random() * 400
+    // Converter o workflow gerado para o formato Flowise
+    const flowiseWorkflow = await FlowiseConverter.convertToFlowiseFormat(
+      generatedWorkflow,
+      workspaceId
+    );
+
+    // Salvar no banco de dados local
+    const flowiseWorkflowRecord = await FlowiseConverter.saveToDatabase(
+      flowiseWorkflow,
+      generatedWorkflow,
+      workspaceId
+    );
+
+    // Tentar criar o workflow no Flowise
+    let flowiseApiResult = null;
+    try {
+      const flowiseClient = createFlowiseClient(defaultFlowiseConfig);
+      
+      // Testar conexão com Flowise
+      const isConnected = await flowiseClient.testConnection();
+      if (!isConnected) {
+        console.warn('Flowise não está disponível, salvando apenas localmente');
+      } else {
+        // Preparar dados para Flowise
+        const flowiseChatflowData = {
+          name: generatedWorkflow.name,
+          description: generatedWorkflow.description,
+          type: 'AGENTFLOW' as const,
+          flowData: JSON.stringify(flowiseWorkflow),
+          deployed: false,
+          isPublic: false,
+          category: 'generated',
+          workspaceId,
+          chatbotConfig: JSON.stringify({
+            inputFields: [
+              {
+                label: 'Input',
+                name: 'input',
+                type: 'string',
+                required: true
+              }
+            ],
+            outputFields: [
+              {
+                label: 'Response',
+                name: 'response',
+                type: 'string'
+              }
+            ]
+          }),
+          apiConfig: JSON.stringify({
+            enabled: true,
+            endpoint: `/api/v1/prediction/${flowiseWorkflowRecord.id}`,
+            method: 'POST'
+          })
+        };
+
+        // Criar chatflow no Flowise
+        const createdChatflow = await flowiseClient.createChatflow(flowiseChatflowData);
+        flowiseApiResult = createdChatflow;
+        
+        // Atualizar registro local com o ID do Flowise
+        await db.flowiseWorkflow.update({
+          where: { id: flowiseWorkflowRecord.id },
+          data: {
+            flowiseId: createdChatflow.id,
+            deployed: createdChatflow.deployed || false
+          }
+        });
+
+        console.log('Workflow criado com sucesso no Flowise:', createdChatflow.id);
+      }
+    } catch (flowiseError) {
+      console.error('Erro ao criar workflow no Flowise:', flowiseError);
+      // Não falhar a operação inteira se Flowise falhar
+      // O workflow já foi salvo localmente
+    }
+
+    // Atualizar a composição com a referência ao workflow Flowise
+    try {
+      await db.composition.update({
+        where: { id: compositionId },
+        data: {
+          config: JSON.stringify({
+            flowiseWorkflowId: flowiseWorkflowRecord.id,
+            flowiseApiId: flowiseApiResult?.id,
+            aiGenerated: true,
+            nodes: generatedWorkflow.nodes,
+            edges: generatedWorkflow.edges,
+            workflowType: generatedWorkflow.complexity,
+            estimatedTime: generatedWorkflow.estimatedTime
+          })
         }
-      })),
-      edges: generatedWorkflow.edges.map((edge: any) => ({
-        source: edge.source,
-        target: edge.target,
-        type: edge.type
-      })),
-      workspaceId,
-      compositionId,
-      aiGenerated: true,
-      complexity: generatedWorkflow.complexity,
-      estimatedTime: generatedWorkflow.estimatedTime
-    };
-
-    // Here you would typically save to a Flowise database or service
-    // For now, we'll just log and return success
-    console.log('Flowise workflow to be saved:', flowiseWorkflow);
-
-    // TODO: Implement actual Flowise integration
-    // This would involve:
-    // 1. Connecting to Flowise API
-    // 2. Creating the workflow in Flowise
-    // 3. Returning the Flowise workflow ID
+      });
+    } catch (updateError) {
+      console.error('Erro ao atualizar composição com referência Flowise:', updateError);
+      // Continuar mesmo se a atualização falhar
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Workflow Flowise salvo com sucesso',
-      flowiseWorkflowId: `flowise_${Date.now()}`, // Placeholder ID
-      workflow: flowiseWorkflow
+      flowiseWorkflowId: flowiseWorkflowRecord.id,
+      flowiseApiId: flowiseApiResult?.id,
+      workflow: {
+        id: flowiseWorkflowRecord.id,
+        name: generatedWorkflow.name,
+        description: generatedWorkflow.description,
+        complexity: generatedWorkflow.complexity,
+        estimatedTime: generatedWorkflow.estimatedTime,
+        nodeCount: flowiseWorkflow.nodes.length,
+        edgeCount: flowiseWorkflow.edges.length,
+        deployed: flowiseApiResult?.deployed || false,
+        flowiseAvailable: !!flowiseApiResult
+      }
     });
   } catch (error) {
     console.error('Error saving Flowise workflow:', error);

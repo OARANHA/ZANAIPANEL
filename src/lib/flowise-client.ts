@@ -318,6 +318,6 @@ export function createFlowiseClient(config: FlowiseConfig): FlowiseClient {
 export const defaultFlowiseConfig: FlowiseConfig = {
   baseUrl: process.env.NEXT_PUBLIC_FLOWISE_URL || 'http://localhost:3001',
   apiKey: process.env.FLOWISE_API_KEY,
-  timeout: 30000,
-  retryAttempts: 3
+  timeout: parseInt(process.env.FLOWISE_TIMEOUT || '30000'),
+  retryAttempts: parseInt(process.env.FLOWISE_RETRY_ATTEMPTS || '3')
 };

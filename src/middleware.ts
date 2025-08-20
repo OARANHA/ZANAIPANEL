@@ -16,14 +16,14 @@ export function middleware(request: NextRequest) {
   const publicRoutes = ['/', '/login', '/register', '/planos', '/contato', '/servicos', '/demonstracao', '/doc', 'agentes', '/automacao', '/admin/login', '/admin/logout', '/flowise-external-sync'];
   
   // APIs públicas que não precisam de autenticação
-  const publicAPIs = ['/api/health', '/admin/api/auth/login', '/api/chat', '/api/flowise-chat', '/api/flowise-external-sync'];
+  const publicAPIs = ['/api/health', '/admin/api/auth/login', '/api/chat', '/api/flowise-chat', '/api/flowise-external-sync', '/admin/api/flowise-status'];
   
   // Se for rota pública ou API pública, permite acesso imediatamente
   if (publicRoutes.includes(pathname) || publicAPIs.some(api => pathname.startsWith(api))) {
     return NextResponse.next();
   }
   
-  // Se for API (exceto as públicas), permite acesso sem middleware
+  // Se for API (exceto as públicas), verificar autenticação
   if (pathname.startsWith('/api/') && !publicAPIs.some(api => pathname.startsWith(api))) {
     // Para APIs de admin, verificar autenticação
     if (pathname.startsWith('/admin/api/')) {
