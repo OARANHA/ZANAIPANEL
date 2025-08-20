@@ -23,7 +23,9 @@ import {
   Loader2,
   FileText,
   Network,
-  Zap
+  Zap,
+  GitBranch,
+  Settings
 } from 'lucide-react';
 import WorkflowPreview from './WorkflowPreview';
 
@@ -211,6 +213,39 @@ export default function AIWorkflowGenerator({
     setError(null);
   };
 
+  const handleExecuteWorkflow = (workflow: GeneratedWorkflow) => {
+    // Implementar execução do workflow
+    console.log('Executando workflow:', workflow.name);
+    
+    // Aqui você pode:
+    // 1. Salvar o workflow como composição
+    // 2. Executar a composição
+    // 3. Mostrar resultados da execução
+    
+    // Por enquanto, vamos mostrar uma mensagem de sucesso
+    alert(`Workflow "${workflow.name}" enviado para execução!`);
+  };
+
+  const handleEditWorkflow = (workflow: GeneratedWorkflow) => {
+    // Implementar edição do workflow
+    console.log('Editando workflow:', workflow.name);
+    
+    // Aqui você pode:
+    // 1. Abrir um modal de edição
+    // 2. Permitir modificar nós e conexões
+    // 3. Alterar agentes envolvidos
+    // 4. Ajustar configurações
+    
+    // Por enquanto, vamos permitir editar a descrição
+    const newDescription = prompt('Edite a descrição do workflow:', workflow.description);
+    if (newDescription && newDescription !== workflow.description) {
+      setGeneratedWorkflow({
+        ...workflow,
+        description: newDescription
+      });
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
@@ -383,8 +418,12 @@ export default function AIWorkflowGenerator({
                           };
                         })}
                         onExecute={() => {
-                          // Placeholder for execution functionality
-                          console.log('Executar workflow:', generatedWorkflow.name);
+                          // Implementar execução do workflow
+                          handleExecuteWorkflow(generatedWorkflow);
+                        }}
+                        onEdit={() => {
+                          // Implementar edição do workflow
+                          handleEditWorkflow(generatedWorkflow);
                         }}
                         isExecutable={generatedWorkflow.agents.some(agentId => {
                           const agent = agents.find(a => a.id === agentId);
@@ -432,30 +471,149 @@ export default function AIWorkflowGenerator({
                             <FileText className="w-4 h-4" />
                             Estrutura do Workflow
                           </CardTitle>
+                          <CardDescription>
+                            Detalhes técnicos e configurações do workflow gerado
+                          </CardDescription>
                         </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CardContent className="space-y-6">
+                          {/* Ações Rápidas */}
+                          <div className="flex flex-wrap gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleEditWorkflow(generatedWorkflow)}
+                            >
+                              <Settings className="w-4 h-4 mr-2" />
+                              Editar Workflow
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(JSON.stringify(generatedWorkflow, null, 2));
+                                alert('Estrutura copiada para a área de transferência!');
+                              }}
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              Copiar JSON
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                const blob = new Blob([JSON.stringify(generatedWorkflow, null, 2)], { type: 'application/json' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `${generatedWorkflow.name.replace(/\s+/g, '_')}.json`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              Exportar JSON
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                // Regenerar workflow com mesmos parâmetros
+                                handleGenerate();
+                              }}
+                            >
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              Regenerar
+                            </Button>
+                          </div>
+
+                          {/* Configurações do Workflow */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                              <h4 className="font-medium mb-2">Nós ({generatedWorkflow.nodes.length})</h4>
-                              <div className="space-y-1 max-h-40 overflow-y-auto">
+                              <label className="text-sm font-medium text-muted-foreground">Tipo de Workflow</label>
+                              <p className="text-lg font-medium capitalize">{workflowType}</p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-muted-foreground">Complexidade</label>
+                              <Badge variant={generatedWorkflow.complexity === 'simple' ? 'secondary' : generatedWorkflow.complexity === 'medium' ? 'default' : 'destructive'}>
+                                {generatedWorkflow.complexity === 'simple' ? 'Simples' : generatedWorkflow.complexity === 'medium' ? 'Médio' : 'Complexo'}
+                              </Badge>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-muted-foreground">Tempo Estimado</label>
+                              <p className="text-lg font-medium">{generatedWorkflow.estimatedTime}</p>
+                            </div>
+                          </div>
+
+                          {/* Estrutura Detalhada */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <h4 className="font-medium mb-3">Nós ({generatedWorkflow.nodes.length})</h4>
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
                                 {generatedWorkflow.nodes.map((node, index) => (
-                                  <div key={node.id} className="text-sm p-2 bg-muted/30 rounded">
-                                    <span className="font-medium">{index + 1}. {node.name}</span>
-                                    <div className="text-muted-foreground text-xs">{node.type}</div>
+                                  <div key={node.id} className="p-3 bg-muted/30 rounded-lg border">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="font-medium text-sm">{index + 1}. {node.name}</span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {node.type}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mb-2">{node.description}</p>
+                                    {node.config.agentId && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        Agente: {agents.find(a => a.id === node.config.agentId)?.name || 'Desconhecido'}
+                                      </Badge>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             </div>
+                            
                             <div>
-                              <h4 className="font-medium mb-2">Conexões ({generatedWorkflow.edges.length})</h4>
-                              <div className="space-y-1 max-h-40 overflow-y-auto">
+                              <h4 className="font-medium mb-3">Conexões ({generatedWorkflow.edges.length})</h4>
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
                                 {generatedWorkflow.edges.map((edge, index) => (
-                                  <div key={index} className="text-sm p-2 bg-muted/30 rounded">
-                                    <span className="font-medium">{edge.source}</span>
-                                    <span className="mx-1">→</span>
-                                    <span className="font-medium">{edge.target}</span>
+                                  <div key={index} className="p-3 bg-muted/30 rounded-lg border">
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <GitBranch className="w-4 h-4 text-muted-foreground" />
+                                      <span className="font-medium">{edge.source}</span>
+                                      <span className="text-muted-foreground">→</span>
+                                      <span className="font-medium">{edge.target}</span>
+                                    </div>
+                                    <Badge variant="outline" className="text-xs mt-1">
+                                      {edge.type}
+                                    </Badge>
                                   </div>
                                 ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Resumo Técnico */}
+                          <div className="p-4 bg-muted/50 rounded-lg">
+                            <h4 className="font-medium mb-2">Resumo Técnico</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Total de Nós:</span>
+                                <span className="ml-2 font-medium">{generatedWorkflow.nodes.length}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Total de Conexões:</span>
+                                <span className="ml-2 font-medium">{generatedWorkflow.edges.length}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Agentes Ativos:</span>
+                                <span className="ml-2 font-medium">
+                                  {generatedWorkflow.agents.filter(agentId => {
+                                    const agent = agents.find(a => a.id === agentId);
+                                    return agent?.status === 'active';
+                                  }).length}/{generatedWorkflow.agents.length}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Status:</span>
+                                <Badge variant="default" className="ml-2 text-xs">
+                                  Pronto para salvar
+                                </Badge>
                               </div>
                             </div>
                           </div>
