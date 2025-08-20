@@ -100,7 +100,7 @@ export default function AIWorkflowGenerator({
         });
       }, 500);
 
-      const response = await fetch('/api/admin/compositions/generate-ai-workflow', {
+      const response = await fetch('/admin/api/compositions/generate-ai-workflow', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -166,7 +166,7 @@ export default function AIWorkflowGenerator({
         
         // Then, convert and save as Flowise workflow
         try {
-          const flowiseResponse = await fetch('/api/admin/compositions/save-flowise-workflow', {
+          const flowiseResponse = await fetch('/admin/api/compositions/save-flowise-workflow', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -75,7 +75,7 @@ export default function CompositionsPage() {
 
   const loadWorkspaces = async () => {
     try {
-      const response = await fetch('/api/workspaces');
+      const response = await fetch('/admin/api/workspaces');
       if (response.ok) {
         const data = await response.json();
         setWorkspaces(data);
@@ -90,7 +90,7 @@ export default function CompositionsPage() {
 
   const loadAgents = async () => {
     try {
-      const response = await fetch('/api/agents');
+      const response = await fetch('/admin/api/agents');
       if (response.ok) {
         const data = await response.json();
         // The API returns { agents: [...] } so we need to extract the agents array
@@ -105,7 +105,7 @@ export default function CompositionsPage() {
 
   const loadCompositions = async () => {
     try {
-      const response = await fetch('/api/compositions');
+      const response = await fetch('/admin/api/compositions');
       if (response.ok) {
         const data = await response.json();
         setCompositions(data);
@@ -119,7 +119,7 @@ export default function CompositionsPage() {
     if (!newComposition.name || !selectedWorkspace) return;
 
     try {
-      const response = await fetch('/api/compositions', {
+      const response = await fetch('/admin/api/compositions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -147,7 +147,7 @@ export default function CompositionsPage() {
   const executeComposition = async (composition: Composition) => {
     setIsExecuting(composition.id);
     try {
-      const response = await fetch('/api/compositions/execute', {
+      const response = await fetch('/admin/api/compositions/execute', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -180,7 +180,7 @@ export default function CompositionsPage() {
 
   const toggleArchiveComposition = async (composition: Composition) => {
     try {
-      const response = await fetch('/api/compositions/' + composition.id + '/archive', {
+      const response = await fetch('/admin/api/compositions/' + composition.id + '/archive', {
         method: 'PATCH',
       });
 

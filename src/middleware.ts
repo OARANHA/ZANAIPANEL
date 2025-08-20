@@ -61,9 +61,9 @@ export function middleware(request: NextRequest) {
   
   // Se estiver autenticado, verifica permissões específicas por rota
   
-  // /admin = Painel de SUPER_ADMIN (controle total do sistema)
+  // /admin = Painel de SUPER_ADMIN e admin (controle total do sistema)
   if (pathname.startsWith('/admin') && pathname !== '/admin/login' && pathname !== '/admin/logout') {
-    if (userRole !== 'SUPER_ADMIN') {
+    if (!['SUPER_ADMIN', 'admin'].includes(userRole || '')) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
   }

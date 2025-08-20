@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user role matches the requested userType
-    if (userType === 'admin' && !['SUPER_ADMIN'].includes(user.role)) {
+    if (userType === 'admin' && !['SUPER_ADMIN', 'admin'].includes(user.role)) {
       return NextResponse.json(
         { error: 'Este usuário não tem permissão de administrador. Entre com uma conta de administrador válida.' },
         { status: 403 }

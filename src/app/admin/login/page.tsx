@@ -38,6 +38,12 @@ export default function LoginPage() {
         localStorage.setItem('auth-token', data.token)
         localStorage.setItem('user-role', data.user.role)
         
+        // Set cookies for middleware authentication
+        document.cookie = `isAuthenticated=true; path=/; max-age=86400`
+        document.cookie = `userRole=${data.user.role}; path=/; max-age=86400`
+        document.cookie = `userEmail=${encodeURIComponent(data.user.email)}; path=/; max-age=86400`
+        document.cookie = `userName=${encodeURIComponent(data.user.name)}; path=/; max-age=86400`
+        
         // Redirect to appropriate dashboard based on role
         if (data.user.role === 'SUPER_ADMIN') {
           router.push('/admin')
@@ -80,7 +86,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@zanai.com"
+                  placeholder="superadmin@zanai.com"
                   required
                   className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400"
                 />
