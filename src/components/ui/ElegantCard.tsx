@@ -75,15 +75,15 @@ export default function ElegantCard({
       
       {/* Action buttons overlay */}
       {showActions && (
-        <div className="absolute top-2 right-2 z-[10001]">
-          <div className="flex items-center space-x-1 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-1">
+        <div className="absolute top-2 right-2 z-[99997]">
+          <div className="flex items-center space-x-1 bg-black/80 backdrop-blur-md rounded-lg shadow-xl border border-gray-700 p-1">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 p-0 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
+                    className="h-8 w-8 p-0 hover:bg-gray-800 text-gray-400 hover:text-white"
                     onClick={(e) => {
                       e.stopPropagation();
                       onViewDetails?.();
@@ -104,7 +104,7 @@ export default function ElegantCard({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 p-0 hover:bg-green-100 dark:hover:bg-green-900/50 text-gray-600 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-400"
+                    className="h-8 w-8 p-0 hover:bg-gray-800 text-gray-400 hover:text-white"
                     onClick={(e) => {
                       e.stopPropagation();
                       onEdit?.();

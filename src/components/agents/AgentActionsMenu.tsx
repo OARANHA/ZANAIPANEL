@@ -274,8 +274,11 @@ export default function AgentActionsMenu({
           <>
             {/* Backdrop */}
             <div 
-              className="fixed inset-0 z-[10001] bg-black/60 backdrop-blur-sm"
-              onClick={() => setIsMenuOpen(false)}
+              className="fixed inset-0 z-[99998] bg-black/60 backdrop-blur-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMenuOpen(false);
+              }}
             />
             
             {/* Menu content */}
