@@ -177,6 +177,14 @@ This project aims to integrate Flowise AgentFlow V2 Generator into the existing 
 - Added proper cookie attributes for security
 - Updated email placeholder to reflect correct admin credentials
 
+#### 5. Composition Save Error
+**Problem**: Users encountered "Erro ao salvar composição. Tente novamente." when saving AI-generated workflows
+**Root Cause**: AIWorkflowGenerator was calling `/api/compositions` instead of `/admin/api/compositions`
+**Solution**:
+- Updated API call in AIWorkflowGenerator component to use correct admin API path
+- Ensured consistency with established admin API pattern
+- Fixed path mismatch causing save failures
+
 ### 🎯 Technical Improvements
 
 #### API Endpoint Structure
@@ -311,7 +319,7 @@ This project aims to integrate Flowise AgentFlow V2 Generator into the existing 
 
 ## Deployment Summary
 - **Repository**: https://github.com/OARANHA/ZANAIPANEL.git
-- **Latest Commit**: 905c0fa - Fix AI workflow generation error and authentication issues
+- **Latest Commit**: 71405f9 - Fix composition save error in AI workflow generation
 - **Deployment Status**: Successfully deployed to production
 - **Known Issues**: None - all critical issues resolved
 
