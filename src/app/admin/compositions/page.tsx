@@ -66,6 +66,16 @@ export default function CompositionsPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [sortBy, setSortBy] = useState<'name' | 'created' | 'lastExecuted'>('created');
   const [isExecuting, setIsExecuting] = useState<string | null>(null);
+  const [editingComposition, setEditingComposition] = useState<Composition | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [viewingComposition, setViewingComposition] = useState<Composition | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isArchiving, setIsArchiving] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: ''
+  });
 
   useEffect(() => {
     loadWorkspaces();
@@ -105,10 +115,14 @@ export default function CompositionsPage() {
 
   const loadCompositions = async () => {
     try {
+      console.log('Carregando composições...');
       const response = await fetch('/admin/api/compositions');
       if (response.ok) {
         const data = await response.json();
+        console.log('Composições carregadas:', data);
         setCompositions(data);
+      } else {
+        console.error('Erro ao carregar composições:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Erro ao carregar composições:', error);
@@ -179,6 +193,7 @@ export default function CompositionsPage() {
   };
 
   const toggleArchiveComposition = async (composition: Composition) => {
+    setIsArchiving(composition.id);
     try {
       const response = await fetch('/admin/api/compositions/' + composition.id + '/archive', {
         method: 'PATCH',
@@ -186,26 +201,73 @@ export default function CompositionsPage() {
 
       if (response.ok) {
         await loadCompositions();
+        setNotification({
+          message: `Composição ${composition.status === 'active' ? 'arquivada' : 'desarquivada'} com sucesso!`,
+          type: 'success'
+        });
+      } else {
+        const errorData = await response.json();
+        setNotification({
+          message: `Erro ao ${composition.status === 'active' ? 'arquivar' : 'desarquivar'} composição: ${errorData.error || 'Erro desconhecido'}`,
+          type: 'error'
+        });
       }
     } catch (error) {
       console.error('Erro ao arquivar/desarquivar composição:', error);
+      setNotification({
+        message: 'Erro ao arquivar/desarquivar composição. Tente novamente.',
+        type: 'error'
+      });
+    } finally {
+      setIsArchiving(null);
+      // Auto-hide notification after 3 seconds
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
   const viewCompositionDetails = (composition: Composition) => {
-    // Implementar visualização detalhada da composição
+    // Implementar visualização detalhada da composição com um diálogo modal
     console.log('Ver detalhes da composição:', composition.name);
-    alert(`Detalhes da composição: ${composition.name}\n\nDescrição: ${composition.description}\nAgentes: ${composition.agents.length}\nStatus: ${composition.status}\nExecuções: ${composition.executionCount || 0}`);
+    setViewingComposition(composition);
+    setIsViewDialogOpen(true);
   };
 
   const editComposition = (composition: Composition) => {
-    // Implementar edição da composição
+    // Implementar edição da composição com um diálogo modal
     console.log('Editar composição:', composition.name);
-    // Por enquanto, vamos permitir editar a descrição
-    const newDescription = prompt('Edite a descrição da composição:', composition.description);
-    if (newDescription && newDescription !== composition.description) {
-      // Aqui você implementaria a atualização no backend
-      alert(`Descrição atualizada para: ${newDescription}`);
+    setEditingComposition(composition);
+    setEditForm({
+      name: composition.name,
+      description: composition.description || ''
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingComposition) return;
+
+    try {
+      const response = await fetch(`/admin/api/compositions/${editingComposition.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      if (response.ok) {
+        await loadCompositions();
+        setIsEditDialogOpen(false);
+        setEditingComposition(null);
+        // Show success message (you could use a toast here)
+        alert('Composição atualizada com sucesso!');
+      } else {
+        const errorData = await response.json();
+        alert(`Erro ao atualizar composição: ${errorData.error || 'Erro desconhecido'}`);
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar composição:', error);
+      alert('Erro ao atualizar composição. Tente novamente.');
     }
   };
 
@@ -230,23 +292,85 @@ export default function CompositionsPage() {
     a.download = `${composition.name.replace(/\s+/g, '_')}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    
+    setNotification({
+      message: `Composição "${composition.name}" exportada com sucesso!`,
+      type: 'success'
+    });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const shareComposition = (composition: Composition) => {
     // Compartilhar composição (copiar link ou dados)
     const shareUrl = `${window.location.origin}/admin/compositions/${composition.id}`;
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareUrl);
-      alert('Link da composição copiado para a área de transferência!');
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setNotification({
+          message: 'Link da composição copiado para a área de transferência!',
+          type: 'success'
+        });
+        setTimeout(() => setNotification(null), 3000);
+      }).catch(() => {
+        setNotification({
+          message: 'Erro ao copiar link. Tente novamente.',
+          type: 'error'
+        });
+        setTimeout(() => setNotification(null), 3000);
+      });
     } else {
-      alert(`URL da composição: ${shareUrl}`);
+      setNotification({
+        message: `URL da composição: ${shareUrl}`,
+        type: 'success'
+      });
+      setTimeout(() => setNotification(null), 5000);
     }
   };
 
   const viewCompositionStats = (composition: Composition) => {
-    // Ver estatísticas da composição
+    // Ver estatísticas da composição - usar o mesmo diálogo de visualização
     console.log('Estatísticas da composição:', composition.name);
-    alert(`Estatísticas da composição: ${composition.name}\n\nTotal de Execuções: ${composition.executionCount || 0}\nÚltima Execução: ${composition.lastExecuted ? new Date(composition.lastExecuted).toLocaleString() : 'Nunca'}\nData de Criação: ${new Date(composition.createdAt).toLocaleString()}\nStatus: ${composition.status}`);
+    setViewingComposition(composition);
+    setIsViewDialogOpen(true);
+  };
+
+  const deleteComposition = async (composition: Composition) => {
+    console.log('Tentando deletar composição:', composition);
+    if (!confirm(`Tem certeza que deseja deletar a composição "${composition.name}"? Esta ação não pode ser desfeita.`)) {
+      console.log('Usuário cancelou a deleção');
+      return;
+    }
+
+    try {
+      console.log('Enviando requisição DELETE para:', `/admin/api/compositions/${composition.id}`);
+      const response = await fetch(`/admin/api/compositions/${composition.id}`, {
+        method: 'DELETE',
+      });
+
+      console.log('Resposta do servidor:', response.status, response.statusText);
+      
+      if (response.ok) {
+        console.log('Composição deletada com sucesso, recarregando lista...');
+        await loadCompositions();
+        setNotification({
+          message: `Composição "${composition.name}" deletada com sucesso!`,
+          type: 'success'
+        });
+      } else {
+        const errorData = await response.json();
+        console.error('Erro na resposta do servidor:', errorData);
+        setNotification({
+          message: `Erro ao deletar composição: ${errorData.error || 'Erro desconhecido'}`,
+          type: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Erro na requisição:', error);
+      setNotification({
+        message: 'Erro ao deletar composição. Tente novamente.',
+        type: 'error'
+      });
+    }
+    setTimeout(() => setNotification(null), 3000);
   };
 
   // Função para verificar se a composição foi gerada por IA
@@ -283,6 +407,25 @@ export default function CompositionsPage() {
   return (
     <MainLayout currentPath={pathname}>
       <div className="container mx-auto px-4 py-8">
+        {/* Notification Toast */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg border ${
+            notification.type === 'success' 
+              ? 'bg-green-100 border-green-200 text-green-800' 
+              : 'bg-red-100 border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center">
+              <span>{notification.message}</span>
+              <button 
+                onClick={() => setNotification(null)}
+                className="ml-4 text-xl leading-none hover:opacity-70"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <ElegantCard
@@ -428,6 +571,131 @@ export default function CompositionsPage() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Edit Composition Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Editar Composição</DialogTitle>
+                  <DialogDescription>
+                    Atualize as informações da composição
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Nome</label>
+                    <Input
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      placeholder="Nome da composição"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Descrição</label>
+                    <Textarea
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      placeholder="Descrição da composição"
+                      className="min-h-[100px]"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={handleSaveEdit} 
+                      className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                      disabled={!editForm.name.trim()}
+                    >
+                      Salvar Alterações
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setIsEditDialogOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* View Composition Dialog */}
+            <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Detalhes da Composição</DialogTitle>
+                  <DialogDescription>
+                    Informações detalhadas da composição
+                  </DialogDescription>
+                </DialogHeader>
+                {viewingComposition && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Nome</label>
+                        <p className="font-medium">{viewingComposition.name}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Status</label>
+                        <Badge variant={viewingComposition.status === 'active' ? 'default' : 'secondary'}>
+                          {viewingComposition.status === 'active' ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Descrição</label>
+                      <p className="text-sm mt-1">{viewingComposition.description || 'Sem descrição'}</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Número de Agentes</label>
+                        <p className="font-medium">{viewingComposition.agents.length}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Total de Execuções</label>
+                        <p className="font-medium">{viewingComposition.executionCount || 0}</p>
+                      </div>
+                    </div>
+                    
+                    {viewingComposition.lastExecuted && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Última Execução</label>
+                        <p className="text-sm">
+                          {new Date(viewingComposition.lastExecuted).toLocaleString('pt-BR')}
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Data de Criação</label>
+                      <p className="text-sm">
+                        {new Date(viewingComposition.createdAt).toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2 pt-4">
+                      <Button 
+                        onClick={() => {
+                          setIsViewDialogOpen(false);
+                          editComposition(viewingComposition);
+                        }}
+                        variant="outline"
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Editar
+                      </Button>
+                      <Button 
+                        onClick={() => setIsViewDialogOpen(false)}
+                        variant="outline"
+                      >
+                        Fechar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -486,51 +754,11 @@ export default function CompositionsPage() {
                 showActions={true}
                 onViewDetails={() => viewCompositionDetails(composition)}
                 onEdit={() => editComposition(composition)}
-                actionsMenu={
-                  <div className="relative group">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 hover:text-gray-800 dark:text-gray-400"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                    
-                    {/* Dropdown menu */}
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                      <div className="py-1">
-                        <button
-                          onClick={() => exportComposition(composition)}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Exportar JSON</span>
-                        </button>
-                        <button
-                          onClick={() => shareComposition(composition)}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
-                        >
-                          <Share2 className="w-4 h-4" />
-                          <span>Compartilhar</span>
-                        </button>
-                        <button
-                          onClick={() => viewCompositionStats(composition)}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
-                        >
-                          <BarChart3 className="w-4 h-4" />
-                          <span>Estatísticas</span>
-                        </button>
-                        {aiGenerated && (
-                          <div className="border-t border-gray-200 dark:border-gray-700 my-1">
-                            <div className="px-3 py-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
-                              Gerado por IA
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                }
+                onExport={() => exportComposition(composition)}
+                onShare={() => shareComposition(composition)}
+                onViewStats={() => viewCompositionStats(composition)}
+                onDelete={() => deleteComposition(composition)}
+                isAIGenerated={aiGenerated}
                 metadata={[
                   {
                     label: "Agentes",
@@ -604,8 +832,13 @@ export default function CompositionsPage() {
                       variant="outline" 
                       onClick={() => toggleArchiveComposition(composition)}
                       title={composition.status === 'active' ? "Arquivar composição" : "Ativar composição"}
+                      disabled={isArchiving === composition.id}
                     >
-                      <Archive className="w-4 h-4" />
+                      {isArchiving === composition.id ? (
+                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Archive className="w-4 h-4" />
+                      )}
                     </Button>
                   </div>
                   

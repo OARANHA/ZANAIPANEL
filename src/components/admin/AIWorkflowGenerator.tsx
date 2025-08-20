@@ -123,13 +123,18 @@ export default function AIWorkflowGenerator({
         const workflow = await response.json();
         setGeneratedWorkflow(workflow);
         onWorkflowGenerated(workflow);
+        setError(null); // Clear any previous errors
       } else {
         const errorData = await response.json();
-        setError(errorData.error || 'Erro ao gerar workflow');
+        const errorMessage = errorData.error || 'Erro ao gerar workflow';
+        setError(errorMessage);
+        // Don't set generated workflow on error
+        setGeneratedWorkflow(null);
       }
     } catch (error) {
       console.error('Erro ao gerar workflow:', error);
       setError('Erro ao gerar workflow. Tente novamente.');
+      setGeneratedWorkflow(null); // Ensure workflow is cleared on error
     } finally {
       setIsGenerating(false);
       setTimeout(() => setGenerationProgress(0), 1000);
@@ -137,9 +142,18 @@ export default function AIWorkflowGenerator({
   };
 
   const handleSave = async () => {
-    if (!generatedWorkflow) return;
+    if (!generatedWorkflow) {
+      setError('Nenhum workflow gerado para salvar');
+      return;
+    }
+
+    if (error) {
+      setError('Corrija os erros antes de salvar');
+      return;
+    }
 
     setIsSaving(true);
+    setError(null);
     try {
       // First, save as a regular composition
       const compositionResponse = await fetch('/admin/api/compositions', {
@@ -195,6 +209,7 @@ export default function AIWorkflowGenerator({
         setIsOpen(false);
         setGeneratedWorkflow(null);
         setDescription('');
+        setError(null);
       } else {
         const errorData = await compositionResponse.json();
         setError(errorData.error || 'Erro ao salvar composição');

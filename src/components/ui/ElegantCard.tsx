@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { LucideIcon } from 'lucide-react';
-import { Eye, Edit, MoreVertical, Cpu, Database } from 'lucide-react';
+import { Eye, Edit, MoreVertical, Cpu, Database, Trash2, Download, Share2, BarChart3 } from 'lucide-react';
+import SimpleDropdown from '@/components/ui/SimpleDropdown';
 
 interface ElegantCardProps {
   title: string;
@@ -25,6 +26,12 @@ interface ElegantCardProps {
   showActions?: boolean;
   onViewDetails?: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
+  onExport?: () => void;
+  onShare?: () => void;
+  onViewStats?: () => void;
+  isAIGenerated?: boolean;
+  // Legacy prop para compatibilidade
   actionsMenu?: ReactNode;
   // Props adicionais para informações do agente
   subtitle?: string;
@@ -47,6 +54,11 @@ export default function ElegantCard({
   showActions = false,
   onViewDetails,
   onEdit,
+  onDelete,
+  onExport,
+  onShare,
+  onViewStats,
+  isAIGenerated = false,
   actionsMenu,
   subtitle,
   metadata
@@ -63,7 +75,7 @@ export default function ElegantCard({
       
       {/* Action buttons overlay */}
       {showActions && (
-        <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <div className="absolute top-2 right-2 z-[10001]">
           <div className="flex items-center space-x-1 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-1">
             <TooltipProvider>
               <Tooltip>
@@ -81,7 +93,7 @@ export default function ElegantCard({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Ver detalhes do agente</p>
+                  <p>Ver detalhes da composição</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -102,12 +114,44 @@ export default function ElegantCard({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Editar agente</p>
+                  <p>Editar composição</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            {actionsMenu}
+            {/* Dropdown menu for additional actions */}
+            <SimpleDropdown
+              items={[
+                ...(onExport ? [{
+                  label: 'Exportar JSON',
+                  icon: Download,
+                  onClick: onExport
+                }] : []),
+                ...(onShare ? [{
+                  label: 'Compartilhar',
+                  icon: Share2,
+                  onClick: onShare
+                }] : []),
+                ...(onViewStats ? [{
+                  label: 'Estatísticas',
+                  icon: BarChart3,
+                  onClick: onViewStats
+                }] : []),
+                ...(onDelete ? [{
+                  label: 'Deletar',
+                  icon: Trash2,
+                  onClick: onDelete,
+                  color: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                }] : []),
+                ...(isAIGenerated ? [{
+                  separator: true
+                }, {
+                  label: 'Gerado por IA',
+                  disabled: true,
+                  color: 'text-blue-600 dark:text-blue-400'
+                }] : [])
+              ]}
+            />
           </div>
         </div>
       )}
