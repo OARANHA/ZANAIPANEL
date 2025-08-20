@@ -140,7 +140,7 @@ export default function AIWorkflowGenerator({
     setIsSaving(true);
     try {
       // First, save as a regular composition
-      const compositionResponse = await fetch('/api/compositions', {
+      const compositionResponse = await fetch('/admin/api/compositions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
