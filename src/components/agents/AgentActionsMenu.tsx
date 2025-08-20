@@ -102,9 +102,9 @@ export default function AgentActionsMenu({
 
   const menuContent = (
     <div className="absolute right-0 bottom-full z-[10002] mb-1">
-      <div className="bg-popover border border-border shadow-lg rounded-lg min-w-[200px] p-1">
+      <div className="bg-gray-900 border border-gray-700 shadow-lg rounded-lg min-w-[200px] p-1">
         <div className="py-1">
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Ações do Agente
           </div>
           
@@ -115,7 +115,7 @@ export default function AgentActionsMenu({
               setIsMenuOpen(false);
             }}
             disabled={isExecuting || agent.status !== 'active'}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-gray-700 text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isExecuting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -131,7 +131,7 @@ export default function AgentActionsMenu({
               onEdit?.(agent);
               setIsMenuOpen(false);
             }}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-gray-700 text-gray-300"
           >
             <Settings className="w-4 h-4" />
             <span>Editar</span>
@@ -144,7 +144,7 @@ export default function AgentActionsMenu({
               setIsMenuOpen(false);
             }}
             disabled={isDuplicating}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-gray-700 text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDuplicating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -154,9 +154,9 @@ export default function AgentActionsMenu({
             <span>Duplicar</span>
           </button>
           
-          <div className="border-t border-border my-1" />
+          <div className="border-t border-gray-700 my-1" />
           
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Compartilhamento
           </div>
           
@@ -166,7 +166,7 @@ export default function AgentActionsMenu({
               handleExport();
               setIsMenuOpen(false);
             }}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-gray-700 text-gray-300"
           >
             <Download className="w-4 h-4" />
             <span>Exportar Configuração</span>
@@ -178,15 +178,15 @@ export default function AgentActionsMenu({
               handleShare();
               setIsMenuOpen(false);
             }}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-gray-700 text-gray-300"
           >
             <Share2 className="w-4 h-4" />
             <span>Compartilhar</span>
           </button>
           
-          <div className="border-t border-border my-1" />
+          <div className="border-t border-gray-700 my-1" />
           
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Gerenciamento
           </div>
           
@@ -196,7 +196,7 @@ export default function AgentActionsMenu({
               onArchive?.(agent);
               setIsMenuOpen(false);
             }}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-gray-700 text-gray-300"
           >
             {isArchived ? (
               <>
@@ -217,38 +217,38 @@ export default function AgentActionsMenu({
               setIsDeleteDialogOpen(true);
               setIsMenuOpen(false);
             }}
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground text-red-600"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-red-900 text-red-300"
           >
             <Trash2 className="w-4 h-4" />
             <span>Excluir Permanentemente</span>
           </button>
           
-          <div className="border-t border-border my-1" />
+          <div className="border-t border-gray-700 my-1" />
           
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Informações
           </div>
           
           <button
             disabled
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center justify-between space-x-2 rounded-sm opacity-50"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center justify-between space-x-2 rounded-sm opacity-50 text-gray-500"
           >
             <div className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
               <span>Estatísticas</span>
             </div>
-            <span className="text-xs bg-muted px-2 py-1 rounded">24 execuções</span>
+            <span className="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300">24 execuções</span>
           </button>
           
           <button
             disabled
-            className="w-full text-left px-2 py-1.5 text-sm flex items-center justify-between space-x-2 rounded-sm opacity-50"
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center justify-between space-x-2 rounded-sm opacity-50 text-gray-500"
           >
             <div className="flex items-center space-x-2">
               <Clock className="w-4 h-4" />
               <span>Última Execução</span>
             </div>
-            <span className="text-xs bg-muted px-2 py-1 rounded">há 2 min</span>
+            <span className="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300">há 2 min</span>
           </button>
         </div>
       </div>
