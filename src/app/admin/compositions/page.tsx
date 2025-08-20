@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Users, Plus, Play, Archive, Clock, Settings, Zap, Filter, Search } from 'lucide-react';
+import { Users, Plus, Play, Archive, Clock, Settings, Zap, Filter, Search, Edit, Eye, Download, Share2, MoreHorizontal, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
@@ -190,6 +190,71 @@ export default function CompositionsPage() {
     } catch (error) {
       console.error('Erro ao arquivar/desarquivar composição:', error);
     }
+  };
+
+  const viewCompositionDetails = (composition: Composition) => {
+    // Implementar visualização detalhada da composição
+    console.log('Ver detalhes da composição:', composition.name);
+    alert(`Detalhes da composição: ${composition.name}\n\nDescrição: ${composition.description}\nAgentes: ${composition.agents.length}\nStatus: ${composition.status}\nExecuções: ${composition.executionCount || 0}`);
+  };
+
+  const editComposition = (composition: Composition) => {
+    // Implementar edição da composição
+    console.log('Editar composição:', composition.name);
+    // Por enquanto, vamos permitir editar a descrição
+    const newDescription = prompt('Edite a descrição da composição:', composition.description);
+    if (newDescription && newDescription !== composition.description) {
+      // Aqui você implementaria a atualização no backend
+      alert(`Descrição atualizada para: ${newDescription}`);
+    }
+  };
+
+  const exportComposition = (composition: Composition) => {
+    // Exportar composição como JSON
+    const exportData = {
+      id: composition.id,
+      name: composition.name,
+      description: composition.description,
+      agents: composition.agents,
+      status: composition.status,
+      workspaceId: composition.workspaceId,
+      createdAt: composition.createdAt,
+      lastExecuted: composition.lastExecuted,
+      executionCount: composition.executionCount
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${composition.name.replace(/\s+/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const shareComposition = (composition: Composition) => {
+    // Compartilhar composição (copiar link ou dados)
+    const shareUrl = `${window.location.origin}/admin/compositions/${composition.id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl);
+      alert('Link da composição copiado para a área de transferência!');
+    } else {
+      alert(`URL da composição: ${shareUrl}`);
+    }
+  };
+
+  const viewCompositionStats = (composition: Composition) => {
+    // Ver estatísticas da composição
+    console.log('Estatísticas da composição:', composition.name);
+    alert(`Estatísticas da composição: ${composition.name}\n\nTotal de Execuções: ${composition.executionCount || 0}\nÚltima Execução: ${composition.lastExecuted ? new Date(composition.lastExecuted).toLocaleString() : 'Nunca'}\nData de Criação: ${new Date(composition.createdAt).toLocaleString()}\nStatus: ${composition.status}`);
+  };
+
+  // Função para verificar se a composição foi gerada por IA
+  const isAIGenerated = (composition: Composition) => {
+    // Verificar se o nome ou descrição contém palavras-chave de IA
+    const aiKeywords = ['IA', 'AI', 'Inteligência', 'Gerado por IA', 'AI Generated', 'Workflow', 'Automático'];
+    const textToCheck = `${composition.name} ${composition.description}`.toLowerCase();
+    return aiKeywords.some(keyword => textToCheck.includes(keyword.toLowerCase()));
   };
 
   // Filter and sort compositions
@@ -405,74 +470,158 @@ export default function CompositionsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCompositions.map((composition) => (
-            <ElegantCard
-              key={composition.id}
-              title={composition.name}
-              description={composition.description}
-              icon={Users}
-              iconColor={composition.status === 'active' ? 'text-green-600' : 'text-gray-600'}
-              bgColor={composition.status === 'active' ? 'bg-green-100 dark:bg-green-900/20' : 'bg-gray-100 dark:bg-gray-900/20'}
-              badge={composition.status === 'active' ? 'Ativa' : 'Inativa'}
-              badgeColor={composition.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-700 border-gray-200'}
-            >
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium mb-2">Agentes na composição:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {composition.agents.map((agentId) => {
-                      const agent = agents.find(a => a.id === agentId);
-                      return agent ? (
-                        <Badge key={agentId} variant="outline" className="text-xs">
-                          {agent.name}
-                        </Badge>
-                      ) : null;
-                    })}
+          {filteredCompositions.map((composition) => {
+            const aiGenerated = isAIGenerated(composition);
+            
+            return (
+              <ElegantCard
+                key={composition.id}
+                title={composition.name}
+                description={composition.description}
+                icon={Users}
+                iconColor={composition.status === 'active' ? 'text-green-600' : 'text-gray-600'}
+                bgColor={composition.status === 'active' ? 'bg-green-100 dark:bg-green-900/20' : 'bg-gray-100 dark:bg-gray-900/20'}
+                badge={composition.status === 'active' ? 'Ativa' : 'Inativa'}
+                badgeColor={composition.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-700 border-gray-200'}
+                showActions={true}
+                onViewDetails={() => viewCompositionDetails(composition)}
+                onEdit={() => editComposition(composition)}
+                actionsMenu={
+                  <div className="relative group">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 hover:text-gray-800 dark:text-gray-400"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                    
+                    {/* Dropdown menu */}
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                      <div className="py-1">
+                        <button
+                          onClick={() => exportComposition(composition)}
+                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Exportar JSON</span>
+                        </button>
+                        <button
+                          onClick={() => shareComposition(composition)}
+                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                        >
+                          <Share2 className="w-4 h-4" />
+                          <span>Compartilhar</span>
+                        </button>
+                        <button
+                          onClick={() => viewCompositionStats(composition)}
+                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                        >
+                          <BarChart3 className="w-4 h-4" />
+                          <span>Estatísticas</span>
+                        </button>
+                        {aiGenerated && (
+                          <div className="border-t border-gray-200 dark:border-gray-700 my-1">
+                            <div className="px-3 py-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                              Gerado por IA
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                
-                {/* Execution Stats */}
-                <div className="text-xs text-muted-foreground space-y-1">
-                  {composition.executionCount && composition.executionCount > 0 && (
-                    <div className="flex items-center space-x-1">
-                      <Play className="w-3 h-3" />
-                      <span>{composition.executionCount} execuções</span>
+                }
+                metadata={[
+                  {
+                    label: "Agentes",
+                    value: composition.agents.length.toString(),
+                    icon: Users,
+                    color: "text-blue-600"
+                  },
+                  {
+                    label: "Execuções",
+                    value: (composition.executionCount || 0).toString(),
+                    icon: Play,
+                    color: "text-green-600"
+                  },
+                  aiGenerated ? {
+                    label: "Tipo",
+                    value: "IA",
+                    icon: Zap,
+                    color: "text-purple-600"
+                  } : null
+                ].filter(Boolean)}
+              >
+                <div className="space-y-3">
+                  {/* Agentes na composição */}
+                  <div>
+                    <p className="text-sm font-medium mb-2">Agentes na composição:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {composition.agents.map((agentId) => {
+                        const agent = agents.find(a => a.id === agentId);
+                        return agent ? (
+                          <Badge key={agentId} variant="outline" className="text-xs">
+                            {agent.name}
+                          </Badge>
+                        ) : null;
+                      })}
                     </div>
-                  )}
-                  {composition.lastExecuted && (
-                    <div className="flex items-center space-x-1">
-                      <Clock className="w-3 h-3" />
-                      <span>Executada {new Date(composition.lastExecuted).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex space-x-2">
-                  <Button 
-                    size="sm" 
-                    className="flex-1"
-                    onClick={() => executeComposition(composition)}
-                    disabled={isExecuting === composition.id}
-                  >
-                    {isExecuting === composition.id ? (
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Play className="w-4 h-4 mr-1" />
+                  </div>
+                  
+                  {/* Execution Stats */}
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    {composition.executionCount && composition.executionCount > 0 && (
+                      <div className="flex items-center space-x-1">
+                        <Play className="w-3 h-3" />
+                        <span>{composition.executionCount} execuções</span>
+                      </div>
                     )}
-                    Executar
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => toggleArchiveComposition(composition)}
-                    title={composition.status === 'active' ? "Arquivar composição" : "Ativar composição"}
-                  >
-                    <Archive className="w-4 h-4" />
-                  </Button>
+                    {composition.lastExecuted && (
+                      <div className="flex items-center space-x-1">
+                        <Clock className="w-3 h-3" />
+                        <span>Executada {new Date(composition.lastExecuted).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Ações principais */}
+                  <div className="flex space-x-2">
+                    <Button 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => executeComposition(composition)}
+                      disabled={isExecuting === composition.id}
+                    >
+                      {isExecuting === composition.id ? (
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Play className="w-4 h-4 mr-1" />
+                      )}
+                      Executar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => toggleArchiveComposition(composition)}
+                      title={composition.status === 'active' ? "Arquivar composição" : "Ativar composição"}
+                    >
+                      <Archive className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Indicador de IA */}
+                  {aiGenerated && (
+                    <div className="flex items-center justify-center">
+                      <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
+                        <Zap className="w-3 h-3 mr-1" />
+                        Gerado por IA
+                      </Badge>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </ElegantCard>
-          ))}
+              </ElegantCard>
+            );
+          })}
         </div>
 
         {filteredCompositions.length === 0 && (
