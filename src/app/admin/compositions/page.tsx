@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import ElegantCard from '@/components/ui/ElegantCard';
+import AIWorkflowGenerator from '@/components/admin/AIWorkflowGenerator';
 
 interface Agent {
   id: string;
@@ -284,6 +285,16 @@ export default function CompositionsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <AIWorkflowGenerator
+              agents={agents.filter(agent => agent.status === 'active')}
+              workspaceId={selectedWorkspace}
+              onWorkflowGenerated={(workflow) => {
+                console.log('Workflow gerado:', workflow);
+              }}
+              onWorkflowSaved={(composition) => {
+                loadCompositions();
+              }}
+            />
             <Dialog open={isCreateCompositionOpen} onOpenChange={setIsCreateCompositionOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg">
