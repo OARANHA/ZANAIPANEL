@@ -148,7 +148,7 @@ export default function AgentsPage() {
     if (!newAgent.name || !selectedWorkspace) return;
 
     try {
-      const response = await fetch('/api/agents', {
+      const response = await fetch('/admin/api/agents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -232,7 +232,7 @@ export default function AgentsPage() {
       // Gerar um novo slug baseado no nome
       const newSlug = agent.slug + '-copy-' + Date.now();
       
-      const response = await fetch('/api/agents', {
+      const response = await fetch('/admin/api/agents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

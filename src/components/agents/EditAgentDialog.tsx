@@ -64,7 +64,7 @@ export default function EditAgentDialog({ agent, open, onOpenChange, onAgentUpda
 
   const loadWorkspaces = async () => {
     try {
-      const response = await fetch('/api/workspaces');
+      const response = await fetch('/admin/api/workspaces');
       if (response.ok) {
         const data = await response.json();
         setWorkspaces(data);
@@ -76,7 +76,7 @@ export default function EditAgentDialog({ agent, open, onOpenChange, onAgentUpda
 
   const loadAgentData = async () => {
     try {
-      const response = await fetch(`/api/agents/${agent.id}`);
+      const response = await fetch(`/admin/api/agents/${agent.id}`);
       if (response.ok) {
         const agentData = await response.json();
         setFormData({
@@ -101,7 +101,7 @@ export default function EditAgentDialog({ agent, open, onOpenChange, onAgentUpda
 
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/agents/${agent.id}`, {
+      const response = await fetch(`/admin/api/agents/${agent.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

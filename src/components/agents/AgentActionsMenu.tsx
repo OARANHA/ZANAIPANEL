@@ -1,18 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuGroup,
-  DropdownMenuLabel
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -64,6 +52,7 @@ export default function AgentActionsMenu({
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [duplicateName, setDuplicateName] = useState(`${agent.name} (Cópia)`);
 
@@ -109,115 +98,191 @@ export default function AgentActionsMenu({
     setIsDeleteDialogOpen(false);
   };
 
-  const isArchived = agent.status === 'archived';
+  const isArchived = agent.status === 'inactive';
+
+  const menuContent = (
+    <div className="absolute right-0 bottom-full z-[10002] mb-1">
+      <div className="bg-popover border border-border shadow-lg rounded-lg min-w-[200px] p-1">
+        <div className="py-1">
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Ações do Agente
+          </div>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleExecute();
+              setIsMenuOpen(false);
+            }}
+            disabled={isExecuting || agent.status !== 'active'}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isExecuting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            <span>Executar Agente</span>
+          </button>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit?.(agent);
+              setIsMenuOpen(false);
+            }}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            <Settings className="w-4 h-4" />
+            <span>Editar</span>
+          </button>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDuplicate();
+              setIsMenuOpen(false);
+            }}
+            disabled={isDuplicating}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDuplicating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
+            <span>Duplicar</span>
+          </button>
+          
+          <div className="border-t border-border my-1" />
+          
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Compartilhamento
+          </div>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleExport();
+              setIsMenuOpen(false);
+            }}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Configuração</span>
+          </button>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleShare();
+              setIsMenuOpen(false);
+            }}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>Compartilhar</span>
+          </button>
+          
+          <div className="border-t border-border my-1" />
+          
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Gerenciamento
+          </div>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onArchive?.(agent);
+              setIsMenuOpen(false);
+            }}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            {isArchived ? (
+              <>
+                <ArchiveRestore className="w-4 h-4" />
+                <span>Desarquivar</span>
+              </>
+            ) : (
+              <>
+                <Archive className="w-4 h-4" />
+                <span>Arquivar</span>
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsDeleteDialogOpen(true);
+              setIsMenuOpen(false);
+            }}
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center space-x-2 rounded-sm hover:bg-accent hover:text-accent-foreground text-red-600"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Excluir Permanentemente</span>
+          </button>
+          
+          <div className="border-t border-border my-1" />
+          
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Informações
+          </div>
+          
+          <button
+            disabled
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center justify-between space-x-2 rounded-sm opacity-50"
+          >
+            <div className="flex items-center space-x-2">
+              <BarChart3 className="w-4 h-4" />
+              <span>Estatísticas</span>
+            </div>
+            <span className="text-xs bg-muted px-2 py-1 rounded">24 execuções</span>
+          </button>
+          
+          <button
+            disabled
+            className="w-full text-left px-2 py-1.5 text-sm flex items-center justify-between space-x-2 rounded-sm opacity-50"
+          >
+            <div className="flex items-center space-x-2">
+              <Clock className="w-4 h-4" />
+              <span>Última Execução</span>
+            </div>
+            <span className="text-xs bg-muted px-2 py-1 rounded">há 2 min</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-8 w-8 p-0 hover:bg-muted/50"
-          >
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Ações do Agente</DropdownMenuLabel>
+      <div className="relative">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 w-8 p-0 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsMenuOpen(!isMenuOpen);
+          }}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+        
+        {isMenuOpen && (
+          <>
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm"
+              onClick={() => setIsMenuOpen(false)}
+            />
             
-            <DropdownMenuItem onClick={handleExecute} disabled={isExecuting || agent.status !== 'active'}>
-              {isExecuting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="mr-2 h-4 w-4" />
-              )}
-              Executar Agente
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={() => onEdit?.(agent)}>
-              <Settings className="mr-2 h-4 w-4" />
-              Editar
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={handleDuplicate} disabled={isDuplicating}>
-              {isDuplicating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Copy className="mr-2 h-4 w-4" />
-              )}
-              Duplicar
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Compartilhamento</DropdownMenuLabel>
-            
-            <DropdownMenuItem onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar Configuração
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={handleShare}>
-              <Share2 className="mr-2 h-4 w-4" />
-              Compartilhar
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Gerenciamento</DropdownMenuLabel>
-            
-            <DropdownMenuItem onClick={() => onArchive?.(agent)}>
-              {isArchived ? (
-                <>
-                  <ArchiveRestore className="mr-2 h-4 w-4" />
-                  Desarquivar
-                </>
-              ) : (
-                <>
-                  <Archive className="mr-2 h-4 w-4" />
-                  Arquivar
-                </>
-              )}
-            </DropdownMenuItem>
-
-            <DropdownMenuItem 
-              onClick={() => setIsDeleteDialogOpen(true)}
-              className="text-red-600 focus:text-red-600 focus:bg-red-50"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Excluir Permanentemente
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Informações</DropdownMenuLabel>
-            
-            <DropdownMenuItem disabled>
-              <BarChart3 className="mr-2 h-4 w-4" />
-              <div className="flex items-center justify-between w-full">
-                <span>Estatísticas</span>
-                <Badge variant="secondary">24 execuções</Badge>
-              </div>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem disabled>
-              <Clock className="mr-2 h-4 w-4" />
-              <div className="flex items-center justify-between w-full">
-                <span>Última Execução</span>
-                <Badge variant="outline">há 2 min</Badge>
-              </div>
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {/* Menu content */}
+            {menuContent}
+          </>
+        )}
+      </div>
 
       {/* Diálogo de Confirmação de Exclusão */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

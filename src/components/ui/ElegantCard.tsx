@@ -69,7 +69,7 @@ export default function ElegantCard({
     : { onClick, className };
 
   const content = (
-    <Card className={`group relative overflow-hidden bg-white dark:bg-slate-800 shadow-lg hover:shadow-xl transition-all duration-300 border-0 hover:scale-105 hover:-translate-y-1 ${showActions ? 'pt-2' : ''}`}>
+    <Card className={`group relative bg-white dark:bg-slate-800 shadow-lg hover:shadow-xl transition-all duration-300 border-0 hover:scale-105 hover:-translate-y-1 ${showActions ? 'pt-2 overflow-visible' : 'overflow-hidden'}`}>
       {/* Background gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-transparent opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
       
@@ -119,39 +119,44 @@ export default function ElegantCard({
               </Tooltip>
             </TooltipProvider>
 
+            {/* Custom actions menu if provided */}
+            {actionsMenu}
+
             {/* Dropdown menu for additional actions */}
-            <SimpleDropdown
-              items={[
-                ...(onExport ? [{
-                  label: 'Exportar JSON',
-                  icon: Download,
-                  onClick: onExport
-                }] : []),
-                ...(onShare ? [{
-                  label: 'Compartilhar',
-                  icon: Share2,
-                  onClick: onShare
-                }] : []),
-                ...(onViewStats ? [{
-                  label: 'Estatísticas',
-                  icon: BarChart3,
-                  onClick: onViewStats
-                }] : []),
-                ...(onDelete ? [{
-                  label: 'Deletar',
-                  icon: Trash2,
-                  onClick: onDelete,
-                  color: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                }] : []),
-                ...(isAIGenerated ? [{
-                  separator: true
-                }, {
-                  label: 'Gerado por IA',
-                  disabled: true,
-                  color: 'text-blue-600 dark:text-blue-400'
-                }] : [])
-              ]}
-            />
+            {!actionsMenu && (
+              <SimpleDropdown
+                items={[
+                  ...(onExport ? [{
+                    label: 'Exportar JSON',
+                    icon: Download,
+                    onClick: onExport
+                  }] : []),
+                  ...(onShare ? [{
+                    label: 'Compartilhar',
+                    icon: Share2,
+                    onClick: onShare
+                  }] : []),
+                  ...(onViewStats ? [{
+                    label: 'Estatísticas',
+                    icon: BarChart3,
+                    onClick: onViewStats
+                  }] : []),
+                  ...(onDelete ? [{
+                    label: 'Deletar',
+                    icon: Trash2,
+                    onClick: onDelete,
+                    color: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                  }] : []),
+                  ...(isAIGenerated ? [{
+                    separator: true
+                  }, {
+                    label: 'Gerado por IA',
+                    disabled: true,
+                    color: 'text-blue-600 dark:text-blue-400'
+                  }] : [])
+                ]}
+              />
+            )}
           </div>
         </div>
       )}

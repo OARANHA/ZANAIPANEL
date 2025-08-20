@@ -425,7 +425,7 @@ model FlowiseWorkflow {
   flowiseId            String   @unique // ID original no Flowise
   name                  String
   description           String?
-  type                  String   // 'CHATFLOW', 'AGENTFLOW', 'MULTIAGENT', 'ASSISTANT'
+  type                  String   // 'CHATFLOW', 'AGENTFLOW', 'MULTIAGENT', 'ASSISTANT', 'AGENTFLOW_V2'
   flowData              String   // JSON com estrutura completa do workflow
   deployed              Boolean  @default(false)
   isPublic              Boolean  @default(false)
@@ -450,21 +450,104 @@ model FlowiseWorkflow {
   // Capacidades identificadas
   capabilities          String?  // JSON com capacidades do workflow
   
+  // Campos específicos para AgentFlow V2
+  templateType          String?  // 'BUILT_IN', 'CUSTOM', 'IMPORTED'
+  templateSource        String?  // 'MARKETPLACE', 'USER_UPLOAD', 'SYSTEM_GENERATED'
+  templateCategory      String?  // 'RAG', 'REFLECTIVE_AGENT', 'DOCUMENTS_QNA', 'GENERAL'
+  templateVersion       String?  // Versão do template
+  templateMetadata      String?  // JSON com metadados específicos do template
+  
   // Controle de sincronização
   lastSyncAt            DateTime?
-  createdAt             DateTime
-  updatedAt             DateTime
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
   
   // Relacionamentos
   syncLogs              SyncLog[]
   executions            FlowiseExecution[]
+  templateInstances     TemplateInstance[]
   
   @@index([flowiseId])
   @@index([type])
   @@index([category])
   @@index([complexityScore])
   @@index([lastSyncAt])
+  @@index([templateType])
+  @@index([templateCategory])
   @@map("flowise_workflows")
+}
+
+model TemplateInstance {
+  id                    String   @id @default(cuid())
+  name                  String
+  description           String?
+  templateId            String   // ID do workflow template
+  instanceData          String   // JSON com configuração específica da instância
+  status                String   @default("draft") // 'draft', 'active', 'inactive', 'archived'
+  isPublic              Boolean  @default(false)
+  workspaceId           String?
+  userId                String?
+  
+  // Configurações de execução
+  executionConfig       String?  // JSON com configurações de execução
+  apiConfig             String?  // JSON com configurações de API
+  chatbotConfig         String?  // JSON com configurações de chatbot
+  
+  // Métricas de uso
+  usageCount            Int      @default(0)
+  lastUsedAt            DateTime?
+  
+  // Controle de versão
+  version               Int      @default(1)
+  parentInstanceId      String?  // ID da instância pai (para forks)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relacionamentos
+  template              FlowiseWorkflow @relation(fields: [templateId], references: [id])
+  executions            TemplateExecution[]
+  
+  @@index([templateId])
+  @@index([status])
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("template_instances")
+}
+
+model TemplateExecution {
+  id                    String   @id @default(cuid())
+  instanceId            String   // ID da instância do template
+  executionData         String   // JSON com dados da execução
+  state                 String   // 'INPROGRESS', 'FINISHED', 'ERROR', 'TERMINATED', 'TIMEOUT', 'STOPPED'
+  sessionId             String?
+  
+  // Métricas de performance
+  duration              Int?     // Duração em milissegundos
+  success               Boolean  @default(false)
+  errorMessage          String?
+  
+  // Análise de resultados
+  resultSummary         String?  // JSON com resumo dos resultados
+  metrics               String?  // JSON com métricas detalhadas
+  
+  // Contexto de execução
+  inputContext          String?  // JSON com contexto de entrada
+  outputContext         String?  // JSON com contexto de saída
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relacionamentos
+  instance              TemplateInstance @relation(fields: [instanceId], references: [id])
+  
+  @@index([instanceId])
+  @@index([state])
+  @@index([sessionId])
+  @@index([success])
+  @@index([createdAt])
+  @@map("template_executions")
 }
 
 model FlowiseExecution {
